@@ -1,0 +1,76 @@
+---
+# roles/patroni/tasks/main.yml
+# Installs and configures Patroni for PostgreSQL HA.
+# Patroni manages primary election, failover, and replication.
+
+- name: Install Python3 pip and dependencies
+  apt:
+    name:
+      - python3-pip
+      - python3-dev
+      - libpq-dev
+      - gcc
+    state: present
+  become: yes
+
+- name: Install Patroni via pip
+  pip:
+    name: "patroni[etcd]=={{ patroni_version }}"
+    executable: pip3
+    state: present
+  become: yes
+
+- name: Install psycopg2 for Patroni
+  pip:
+    name: psycopg2-binary
+    executable: pip3
+    state: present
+  become: yes
+
+- name: Create Patroni config directory
+  file:
+    path: "{{ patroni_config_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: yes
+
+- name: Create Patroni log directory
+  file:
+    path: "{{ patroni_log_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  become: yes
+
+- name: Deploy Patroni configuration
+  template:
+    src: patroni.yml.j2
+    dest: "{{ patroni_config_dir }}/patroni.yml"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: yes
+  notify: restart patroni
+
+- name: Deploy Patroni systemd service
+  template:
+    src: patroni.service.j2
+    dest: /etc/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: yes
+  notify:
+    - reload systemd
+    - restart patroni
+
+- name: Enable and start Patroni
+  systemd:
+    name: patroni
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes

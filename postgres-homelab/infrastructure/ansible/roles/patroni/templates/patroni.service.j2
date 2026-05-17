@@ -1,0 +1,22 @@
+[Unit]
+Description=Patroni PostgreSQL HA
+Documentation=https://patroni.readthedocs.io/
+After=network.target etcd.service
+Wants=etcd.service
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+ExecStart=/usr/local/bin/patroni {{ patroni_config_dir }}/patroni.yml
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+TimeoutSec=30
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+StandardOutput=append:{{ patroni_log_dir }}/patroni.log
+StandardError=append:{{ patroni_log_dir }}/patroni.log
+
+[Install]
+WantedBy=multi-user.target

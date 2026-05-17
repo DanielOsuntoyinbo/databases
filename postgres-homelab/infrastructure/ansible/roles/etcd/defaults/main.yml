@@ -1,0 +1,8 @@
+---
+etcd_version: "3.5.13"
+etcd_download_url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+etcd_install_dir: "/usr/local/bin"
+etcd_data_dir: "/var/lib/etcd"
+etcd_config_dir: "/etc/etcd"
+etcd_user: "etcd"
+etcd_group: "etcd"

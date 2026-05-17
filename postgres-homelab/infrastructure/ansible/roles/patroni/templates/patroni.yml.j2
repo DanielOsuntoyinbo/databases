@@ -1,0 +1,84 @@
+# patroni.yml — managed by Ansible
+# Generated from roles/patroni/templates/patroni.yml.j2
+
+scope: {{ patroni_cluster_name }}
+namespace: /db/
+name: {{ inventory_hostname }}
+
+# -----------------------------------------------------------------------------
+# etcd — distributed consensus store
+# -----------------------------------------------------------------------------
+etcd3:
+  hosts: "{% for host, ip in pg_nodes.items() %}{{ ip }}:{{ etcd_client_port }}{% if not loop.last %},{% endif %}{% endfor %}"
+
+# -----------------------------------------------------------------------------
+# REST API — used for health checks and monitoring
+# e.g. curl http://10.0.1.11:8008/patroni
+# -----------------------------------------------------------------------------
+restapi:
+  listen: {{ private_ip }}:{{ patroni_port }}
+  connect_address: {{ private_ip }}:{{ patroni_port }}
+
+# -----------------------------------------------------------------------------
+# Bootstrap — runs only on first cluster initialisation
+# -----------------------------------------------------------------------------
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_log_hints: "on"
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - host replication {{ replication_user }} 0.0.0.0/0 scram-sha-256
+    - host all all 0.0.0.0/0 scram-sha-256
+
+  users:
+    {{ replication_user }}:
+      password: "{{ replication_password }}"
+      options:
+        - replication
+
+# -----------------------------------------------------------------------------
+# PostgreSQL — tells Patroni where Postgres lives
+# -----------------------------------------------------------------------------
+postgresql:
+  listen: {{ private_ip }}:{{ postgresql_port }}
+  connect_address: {{ private_ip }}:{{ postgresql_port }}
+  data_dir: {{ postgresql_data_dir }}
+  bin_dir: {{ postgresql_bin_dir }}
+  config_dir: {{ postgresql_config_dir }}
+  pgpass: /tmp/pgpass
+
+  authentication:
+    replication:
+      username: "{{ replication_user }}"
+      password: "{{ replication_password }}"
+    superuser:
+      username: postgres
+      password: "{{ postgres_superuser_password }}"
+
+  parameters:
+    unix_socket_directories: '/var/run/postgresql'
+
+# -----------------------------------------------------------------------------
+# Tags — control Patroni behaviour per node
+# -----------------------------------------------------------------------------
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

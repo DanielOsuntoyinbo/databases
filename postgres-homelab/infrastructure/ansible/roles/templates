@@ -1,0 +1,17 @@
+[Unit]
+Description=etcd distributed reliable key-value store
+Documentation=https://etcd.io/docs/
+After=network.target
+
+[Service]
+Type=notify
+User={{ etcd_user }}
+Group={{ etcd_group }}
+EnvironmentFile={{ etcd_config_dir }}/etcd.conf
+ExecStart={{ etcd_install_dir }}/etcd
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

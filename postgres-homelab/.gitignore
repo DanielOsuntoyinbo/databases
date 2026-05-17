@@ -27,3 +27,5 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+infrastructure/ansible/group_vars/vault.yml
+.vault_pass

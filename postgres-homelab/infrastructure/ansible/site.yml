@@ -32,13 +32,19 @@
     - role: postgres
       tags: postgres
 
-# Future roles — uncomment as implemented:
-# - name: Configure Patroni HA
-#   hosts: postgres_cluster
-#   become: yes
-#   roles:
-#     - role: patroni
-#       tags: patroni
+- name: Install and configure etcd
+  hosts: postgres_cluster
+  become: yes
+  roles:
+    - role: etcd
+      tags: etcd
+
+- name: Configure Patroni HA
+  hosts: postgres_cluster
+  become: yes
+  roles:
+    - role: patroni
+      tags: patroni
 
 # - name: Configure PgBouncer
 #   hosts: postgres_cluster

@@ -1,0 +1,109 @@
+---
+# roles/etcd/tasks/main.yml
+# Installs and configures etcd as Patroni's distributed consensus store.
+# etcd is colocated on each Postgres node — standard practice for 3-node clusters.
+
+- name: Create etcd system group
+  group:
+    name: "{{ etcd_group }}"
+    system: yes
+    state: present
+  become: yes
+
+- name: Create etcd system user
+  user:
+    name: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    system: yes
+    shell: /sbin/nologin
+    home: "{{ etcd_data_dir }}"
+    create_home: no
+    state: present
+  become: yes
+
+- name: Create etcd directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    mode: "0755"
+  loop:
+    - "{{ etcd_data_dir }}"
+    - "{{ etcd_config_dir }}"
+  become: yes
+
+- name: Check if etcd is already installed
+  stat:
+    path: "{{ etcd_install_dir }}/etcd"
+  register: etcd_binary
+
+- name: Download etcd binary
+  get_url:
+    url: "{{ etcd_download_url }}"
+    dest: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    mode: "0644"
+  when: not etcd_binary.stat.exists
+  become: yes
+
+- name: Extract etcd binary
+  unarchive:
+    src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    dest: "/tmp"
+    remote_src: yes
+  when: not etcd_binary.stat.exists
+  become: yes
+
+- name: Install etcd binaries
+  copy:
+    src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}"
+    dest: "{{ etcd_install_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  loop:
+    - etcd
+    - etcdctl
+  when: not etcd_binary.stat.exists
+  become: yes
+  notify: restart etcd
+
+- name: Clean up etcd download
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    - "/tmp/etcd-v{{ etcd_version }}-linux-amd64"
+  become: yes
+
+- name: Deploy etcd configuration
+  template:
+    src: etcd.conf.j2
+    dest: "{{ etcd_config_dir }}/etcd.conf"
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    mode: "0640"
+  become: yes
+  notify: restart etcd
+
+- name: Deploy etcd systemd service
+  template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: yes
+  notify:
+    - reload systemd
+    - restart etcd
+
+- name: Enable and start etcd
+  systemd:
+    name: etcd
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes

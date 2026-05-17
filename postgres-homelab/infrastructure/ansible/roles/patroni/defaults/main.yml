@@ -1,0 +1,6 @@
+---
+# roles/patroni/defaults/main.yml
+
+patroni_version: "3.3.2"
+patroni_config_dir: "/etc/patroni"
+patroni_log_dir: "/var/log/patroni"

@@ -68,3 +68,7 @@ pg_nodes:
   pg-01: "10.0.1.11"
   pg-02: "10.0.1.12"
   pg-03: "10.0.1.13"
+
+# Passwords — sourced from ansible vault
+replication_password: "{{ vault_replication_password }}"
+postgres_superuser_password: "{{ vault_postgres_superuser_password }}"
