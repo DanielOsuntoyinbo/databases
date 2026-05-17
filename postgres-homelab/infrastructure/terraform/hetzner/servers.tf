@@ -11,7 +11,7 @@ resource "hcloud_server" "pg_nodes" {
   image       = var.os_image
   location    = var.location
 
-  ssh_keys = [data.hcloud_ssh_key.default.id]
+  ssh_keys = [tostring(data.hcloud_ssh_key.default.id)]
 
   firewall_ids = [hcloud_firewall.postgres_fw.id]
 
@@ -51,6 +51,11 @@ resource "hcloud_server" "pg_nodes" {
     # Disable password auth — SSH key only.
     # This is non-negotiable in any production environment.
     runcmd:
+      - mkdir -p /home/ubuntu/.ssh
+      - cp /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys
+      - chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+      - chmod 700 /home/ubuntu/.ssh
+      - chmod 600 /home/ubuntu/.ssh/authorized_keys
       - sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
       - sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
       - systemctl restart sshd

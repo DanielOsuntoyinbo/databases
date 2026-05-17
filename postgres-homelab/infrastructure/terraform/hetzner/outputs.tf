@@ -21,7 +21,7 @@ output "ssh_connection_strings" {
   description = "SSH commands to connect to each node"
   value = {
     for server in hcloud_server.pg_nodes :
-    server.name => "ssh -i ~/.ssh/hetzner_postgres ubuntu@${server.ipv4_address}"
+    server.name => "ssh -i ~/.ssh/id_ed25519 ubuntu@${server.ipv4_address}"
   }
 }
 
