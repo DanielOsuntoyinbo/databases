@@ -1,0 +1,66 @@
+# postgresql.conf — managed by Ansible
+# Generated from roles/postgres/templates/postgresql.conf.j2
+# DO NOT edit manually — changes will be overwritten on next Ansible run
+
+# -----------------------------------------------------------------------------
+# CONNECTION
+# -----------------------------------------------------------------------------
+listen_addresses = '*'
+port = {{ postgresql_port }}
+max_connections = {{ pg_max_connections }}
+
+# -----------------------------------------------------------------------------
+# MEMORY
+# -----------------------------------------------------------------------------
+shared_buffers = {{ pg_shared_buffers }}
+effective_cache_size = {{ pg_effective_cache_size }}
+work_mem = {{ pg_work_mem }}
+maintenance_work_mem = {{ pg_maintenance_work_mem }}
+
+# -----------------------------------------------------------------------------
+# WAL
+# -----------------------------------------------------------------------------
+wal_level = {{ pg_wal_level }}
+max_wal_senders = {{ pg_max_wal_senders }}
+max_replication_slots = {{ pg_max_replication_slots }}
+wal_keep_size = {{ pg_wal_keep_size }}
+wal_log_hints = on          # required for pg_rewind (used by Patroni)
+hot_standby = on            # allow reads on standbys
+
+# -----------------------------------------------------------------------------
+# CHECKPOINTS
+# -----------------------------------------------------------------------------
+checkpoint_completion_target = 0.9
+checkpoint_timeout = 10min
+
+# -----------------------------------------------------------------------------
+# LOGGING
+# -----------------------------------------------------------------------------
+logging_collector = on
+log_directory = '{{ postgresql_log_dir }}'
+log_filename = 'postgresql-%Y-%m-%d.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB
+log_truncate_on_rotation = off
+log_file_mode = 0640
+
+log_min_duration_statement = {{ pg_log_min_duration_statement }}
+log_line_prefix = {{ pg_log_line_prefix }}
+log_checkpoints = {{ pg_log_checkpoints }}
+log_lock_waits = {{ pg_log_lock_waits }}
+log_temp_files = {{ pg_log_temp_files }}
+log_autovacuum_min_duration = {{ pg_log_autovacuum_min_duration }}
+
+# -----------------------------------------------------------------------------
+# AUTOVACUUM
+# -----------------------------------------------------------------------------
+autovacuum = on
+autovacuum_max_workers = 3
+autovacuum_naptime = 1min
+
+# -----------------------------------------------------------------------------
+# PERFORMANCE INSIGHTS
+# -----------------------------------------------------------------------------
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all
+pg_stat_statements.max = 10000

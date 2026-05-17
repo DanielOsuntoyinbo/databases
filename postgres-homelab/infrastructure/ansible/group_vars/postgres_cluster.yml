@@ -1,0 +1,64 @@
+# group_vars/postgres_cluster.yml
+# Variables applied to all nodes in the postgres_cluster group.
+# Per-host overrides go in host_vars/<hostname>.yml
+
+# -----------------------------------------------------------------------------
+# PostgreSQL
+# -----------------------------------------------------------------------------
+postgresql_version: "15"
+postgresql_package_version: "15.14"
+
+# Standard paths on Debian/Ubuntu apt installs
+postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
+postgresql_config_dir: "/etc/postgresql/{{ postgresql_version }}/main"
+postgresql_log_dir: "/var/log/postgresql"
+postgresql_bin_dir: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
+
+postgresql_port: 5432
+
+# -----------------------------------------------------------------------------
+# Patroni
+# -----------------------------------------------------------------------------
+patroni_cluster_name: "postgres-homelab"
+patroni_port: 8008
+
+# -----------------------------------------------------------------------------
+# etcd
+# -----------------------------------------------------------------------------
+etcd_client_port: 2379
+etcd_peer_port: 2380
+etcd_data_dir: "/var/lib/etcd"
+
+# -----------------------------------------------------------------------------
+# Replication
+# -----------------------------------------------------------------------------
+replication_user: "replicator"
+# replication_password comes from ansible vault — see group_vars/postgres_cluster/vault.yml
+# Never store passwords in plain text here
+
+# -----------------------------------------------------------------------------
+# Logging (production settings — tuned for low noise)
+# -----------------------------------------------------------------------------
+pg_log_min_duration_statement: 1000    # log queries > 1 second
+pg_log_checkpoints: "on"
+pg_log_lock_waits: "on"
+pg_log_temp_files: 0
+pg_log_autovacuum_min_duration: 250
+pg_log_line_prefix: "'%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '"
+
+# -----------------------------------------------------------------------------
+# Memory (tune per node spec — cx23 has 4GB RAM)
+# -----------------------------------------------------------------------------
+pg_shared_buffers: "1GB"              # ~25% of 4GB RAM
+pg_effective_cache_size: "3GB"        # ~75% of 4GB RAM
+pg_work_mem: "16MB"
+pg_maintenance_work_mem: "256MB"
+pg_max_connections: 100               # pgbouncer sits in front, keep this low
+
+# -----------------------------------------------------------------------------
+# WAL / Replication
+# -----------------------------------------------------------------------------
+pg_wal_level: "replica"               # upgraded to logical when needed
+pg_max_wal_senders: 10
+pg_max_replication_slots: 10
+pg_wal_keep_size: "1GB"

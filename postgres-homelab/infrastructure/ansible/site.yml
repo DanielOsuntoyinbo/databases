@@ -1,0 +1,62 @@
+---
+# site.yml — master playbook
+# Runs all roles in the correct order across all nodes.
+#
+# Usage:
+#   ansible-playbook -i infrastructure/ansible/inventory/hosts.yml \
+#                    infrastructure/ansible/site.yml
+#
+# To run a specific role only:
+#   ansible-playbook -i infrastructure/ansible/inventory/hosts.yml \
+#                    infrastructure/ansible/site.yml --tags postgres
+#
+# Playbook order matters:
+#   1. common     — base OS setup on all nodes
+#   2. postgres   — install + configure PG15 on all nodes
+#   3. patroni    — HA orchestration (coming soon)
+#   4. pgbouncer  — connection pooling (coming soon)
+#   5. pgbackrest — backup + PITR (coming soon)
+#   6. monitoring — prometheus exporters (coming soon)
+
+- name: Base OS configuration
+  hosts: postgres_cluster
+  become: yes
+  roles:
+    - role: common
+      tags: common
+
+- name: Install and configure PostgreSQL
+  hosts: postgres_cluster
+  become: yes
+  roles:
+    - role: postgres
+      tags: postgres
+
+# Future roles — uncomment as implemented:
+# - name: Configure Patroni HA
+#   hosts: postgres_cluster
+#   become: yes
+#   roles:
+#     - role: patroni
+#       tags: patroni
+
+# - name: Configure PgBouncer
+#   hosts: postgres_cluster
+#   become: yes
+#   roles:
+#     - role: pgbouncer
+#       tags: pgbouncer
+
+# - name: Configure pgBackRest
+#   hosts: postgres_cluster
+#   become: yes
+#   roles:
+#     - role: pgbackrest
+#       tags: pgbackrest
+
+# - name: Configure monitoring
+#   hosts: postgres_cluster
+#   become: yes
+#   roles:
+#     - role: monitoring
+#       tags: monitoring

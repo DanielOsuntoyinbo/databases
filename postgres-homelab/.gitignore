@@ -1,0 +1,29 @@
+# Generated files — never commit these
+infrastructure/ansible/inventory/hosts.yml
+infrastructure/terraform/hetzner/terraform.tfvars
+infrastructure/terraform/hetzner/terraform.tfstate
+infrastructure/terraform/hetzner/terraform.tfstate.backup
+infrastructure/terraform/hetzner/.terraform/
+infrastructure/terraform/hetzner/.terraform.lock.hcl
+infrastructure/terraform/hetzner/tfplan
+
+# Ansible
+*.retry
+.ansible/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

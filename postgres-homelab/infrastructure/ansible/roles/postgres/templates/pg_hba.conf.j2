@@ -1,0 +1,24 @@
+# pg_hba.conf — managed by Ansible
+# Generated from roles/postgres/templates/pg_hba.conf.j2
+# Controls client authentication — principle of least privilege
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# Local socket access — postgres system user only
+local   all             postgres                                peer
+
+# Local socket access for all other users
+local   all             all                                     scram-sha-256
+
+# Replication connections from cluster nodes (private network only)
+{% for node, ip in pg_nodes.items() %}
+host    replication     {{ replication_user }}    {{ ip }}/32    scram-sha-256
+{% endfor %}
+
+# Application connections — private network only
+# In production, restrict ADDRESS to your application subnet
+host    all             all             10.0.0.0/16             scram-sha-256
+
+# Patroni health check connections
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
