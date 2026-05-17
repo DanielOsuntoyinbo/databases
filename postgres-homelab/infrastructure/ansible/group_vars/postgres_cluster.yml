@@ -6,7 +6,7 @@
 # PostgreSQL
 # -----------------------------------------------------------------------------
 postgresql_version: "15"
-postgresql_package_version: "15.14"
+postgresql_package_version: "15.17"
 
 # Standard paths on Debian/Ubuntu apt installs
 postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
@@ -62,3 +62,9 @@ pg_wal_level: "replica"               # upgraded to logical when needed
 pg_max_wal_senders: 10
 pg_max_replication_slots: 10
 pg_wal_keep_size: "1GB"
+
+# Node private IPs — used in pg_hba.conf for replication rules
+pg_nodes:
+  pg-01: "10.0.1.11"
+  pg-02: "10.0.1.12"
+  pg-03: "10.0.1.13"

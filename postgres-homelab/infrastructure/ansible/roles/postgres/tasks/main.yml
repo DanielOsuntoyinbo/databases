@@ -1,82 +1,87 @@
 ---
-# roles/common/tasks/main.yml
-# Base OS configuration applied to every node before any service is installed.
-# Mirrors what enterprise teams do as a baseline on every new VM.
+# roles/postgres/tasks/main.yml
+# Installs and configures PostgreSQL 15.14 from the official PGDG apt repo.
 
-- name: Update apt cache
-  apt:
-    update_cache: yes
-    cache_valid_time: 3600
-  become: yes
-
-- name: Install base packages
+- name: Install required packages for PGDG repo setup
   apt:
     name:
       - curl
       - ca-certificates
       - gnupg
-      - vim
-      - htop
-      - net-tools
-      - dnsutils
-      - python3
-      - python3-pip
-      - acl           # required for Ansible become + unprivileged users
-      - ntp           # time sync — critical for Patroni/etcd consensus
     state: present
   become: yes
 
-- name: Ensure NTP is running
+- name: Create PGDG keyring directory
+  file:
+    path: /usr/share/postgresql-common/pgdg
+    state: directory
+    mode: "0755"
+  become: yes
+
+- name: Download PGDG apt signing key
+  get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+    mode: "0644"
+  become: yes
+
+- name: Add PGDG apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+  become: yes
+
+- name: Update apt cache after adding PGDG repo
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  apt:
+    name: 
+      - "postgresql-{{ postgresql_version }}={{ postgresql_package_version }}-1.pgdg22.04+1"
+      - "postgresql-client-{{ postgresql_version }}={{ postgresql_package_version }}-1.pgdg22.04+1"
+    state: present
+    allow_downgrade: yes
+  become: yes
+
+- name: Install PostgreSQL contrib package
+  apt:
+    name: "postgresql-contrib-{{ postgresql_version }}"
+    state: present
+  become: yes
+
+- name: Ensure PostgreSQL service is stopped
   service:
-    name: ntp
-    state: started
-    enabled: yes
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: stopped
+    enabled: no
   become: yes
 
-- name: Set timezone to UTC
-  timezone:
-    name: UTC
+- name: Deploy postgresql.conf
+  template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_config_dir }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
   become: yes
 
-- name: Set hostname to inventory hostname
-  hostname:
-    name: "{{ inventory_hostname }}"
+- name: Deploy pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_config_dir }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
   become: yes
 
-- name: Disable password authentication in sshd
-  lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: "^#?PasswordAuthentication"
-    line: "PasswordAuthentication no"
-    state: present
-  become: yes
-  notify: restart sshd
-
-- name: Set vm.swappiness to 1 (recommended for PostgreSQL)
-  sysctl:
-    name: vm.swappiness
-    value: "1"
-    state: present
-    sysctl_set: yes
-    reload: yes
-  become: yes
-
-- name: Set vm.overcommit_memory to 2 (recommended for PostgreSQL)
-  sysctl:
-    name: vm.overcommit_memory
-    value: "2"
-    state: present
-    sysctl_set: yes
-    reload: yes
-  become: yes
-
-- name: Increase max open files limit for postgres
-  pam_limits:
-    domain: postgres
-    limit_type: "{{ item.type }}"
-    limit_item: nofile
-    value: "65536"
-  loop:
-    - { type: soft }
-    - { type: hard }
+- name: Ensure PostgreSQL log directory exists
+  file:
+    path: "{{ postgresql_log_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
   become: yes
