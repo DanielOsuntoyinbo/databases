@@ -1,0 +1,53 @@
+# pgbouncer.ini — managed by Ansible
+# Generated from roles/pgbouncer/templates/pgbouncer.ini.j2
+
+[databases]
+# Route all connections to local PostgreSQL instance managed by Patroni.
+# PgBouncer connects to the local node — HAProxy/application handles
+# routing to the correct primary/replica at a higher level.
+* = host={{ private_ip }} port={{ postgresql_port }} auth_user=pgbouncer_auth
+
+[pgbouncer]
+# Connection settings
+listen_addr = {{ pgbouncer_listen_addr }}
+listen_port = {{ pgbouncer_port }}
+unix_socket_dir = /var/run/postgresql
+
+# Authentication
+auth_type = scram-sha-256
+auth_file = {{ pgbouncer_config_dir }}/userlist.txt
+auth_query = SELECT usename, passwd FROM pg.bouncer.get_auth($1)
+auth_user = pgbouncer_auth
+
+# Pool settings
+pool_mode = {{ pgbouncer_pool_mode }}
+max_client_conn = {{ pgbouncer_max_client_conn }}
+default_pool_size = {{ pgbouncer_default_pool_size }}
+min_pool_size = {{ pgbouncer_min_pool_size }}
+reserve_pool_size = {{ pgbouncer_reserve_pool_size }}
+reserve_pool_timeout = {{ pgbouncer_reserve_pool_timeout }}
+max_db_connections = {{ pgbouncer_max_db_connections }}
+
+# Timeouts
+server_idle_timeout = {{ pgbouncer_server_idle_timeout }}
+client_idle_timeout = {{ pgbouncer_client_idle_timeout }}
+server_connect_timeout = {{ pgbouncer_server_connect_timeout }}
+query_timeout = {{ pgbouncer_query_timeout }}
+
+# Logging
+log_connections = {{ pgbouncer_log_connections }}
+log_disconnections = {{ pgbouncer_log_disconnections }}
+log_pooler_errors = {{ pgbouncer_log_pooler_errors }}
+stats_period = {{ pgbouncer_stats_period }}
+logfile = {{ pgbouncer_log_dir }}/pgbouncer.log
+pidfile = /var/run/postgresql/pgbouncer.pid
+
+# Admin access — for monitoring and management
+admin_users = pgbouncer_admin
+stats_users = pgbouncer_admin
+
+# Safety settings
+server_reset_query = DISCARD ALL
+server_check_query = SELECT 1
+server_check_delay = 30
+ignore_startup_parameters = extra_float_digits

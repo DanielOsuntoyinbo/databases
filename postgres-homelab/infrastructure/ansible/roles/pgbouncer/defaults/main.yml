@@ -1,0 +1,29 @@
+---
+# roles/pgbouncer/defaults/main.yml
+
+pgbouncer_version: "1.25.2"
+pgbouncer_port: 6432
+pgbouncer_listen_addr: "{{ private_ip }}"
+pgbouncer_config_dir: "/etc/pgbouncer"
+pgbouncer_log_dir: "/var/log/pgbouncer"
+
+# Pool settings
+pgbouncer_pool_mode: "transaction"
+pgbouncer_max_client_conn: 1000
+pgbouncer_default_pool_size: 20
+pgbouncer_min_pool_size: 5
+pgbouncer_reserve_pool_size: 5
+pgbouncer_reserve_pool_timeout: 5
+pgbouncer_max_db_connections: 50
+
+# Timeouts
+pgbouncer_server_idle_timeout: 600
+pgbouncer_client_idle_timeout: 0
+pgbouncer_server_connect_timeout: 15
+pgbouncer_query_timeout: 0
+
+# Logging
+pgbouncer_log_connections: 0
+pgbouncer_log_disconnections: 0
+pgbouncer_log_pooler_errors: 1
+pgbouncer_stats_period: 60

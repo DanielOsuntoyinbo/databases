@@ -1,0 +1,14 @@
+---
+# roles/pgbouncer/handlers/main.yml
+
+- name: restart pgbouncer
+  systemd:
+    name: pgbouncer
+    state: restarted
+  become: yes
+
+- name: reload pgbouncer
+  systemd:
+    name: pgbouncer
+    state: reloaded
+  become: yes

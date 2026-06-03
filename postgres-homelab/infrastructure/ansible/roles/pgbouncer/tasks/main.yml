@@ -1,0 +1,73 @@
+---
+# roles/pgbouncer/tasks/main.yml
+# Installs and configures PgBouncer as a connection pooler in front of PostgreSQL.
+# PgBouncer runs on every node and connects to the local PostgreSQL instance.
+# NOTE: Ubuntu pgbouncer package runs the service as 'postgres' user.
+# We create a 'pgbouncer' group and add 'postgres' to it for file access.
+
+- name: Install PgBouncer
+  apt:
+    name: pgbouncer
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Create pgbouncer system group
+  group:
+    name: pgbouncer
+    system: yes
+    state: present
+  become: yes
+
+- name: Add postgres user to pgbouncer group
+  user:
+    name: postgres
+    groups: pgbouncer
+    append: yes
+  become: yes
+
+- name: Create PgBouncer log directory
+  file:
+    path: "{{ pgbouncer_log_dir }}"
+    state: directory
+    owner: postgres
+    group: pgbouncer
+    mode: "0775"
+  become: yes
+
+- name: Create PgBouncer log file
+  file:
+    path: "{{ pgbouncer_log_dir }}/pgbouncer.log"
+    state: touch
+    owner: postgres
+    group: pgbouncer
+    mode: "0664"
+  become: yes
+
+- name: Deploy PgBouncer main config
+  template:
+    src: pgbouncer.ini.j2
+    dest: "{{ pgbouncer_config_dir }}/pgbouncer.ini"
+    owner: postgres
+    group: pgbouncer
+    mode: "0640"
+  become: yes
+  notify: reload pgbouncer
+
+- name: Deploy PgBouncer userlist
+  template:
+    src: userlist.txt.j2
+    dest: "{{ pgbouncer_config_dir }}/userlist.txt"
+    owner: postgres
+    group: pgbouncer
+    mode: "0640"
+  become: yes
+  notify: reload pgbouncer
+
+- name: Enable and start PgBouncer
+  systemd:
+    name: pgbouncer
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes

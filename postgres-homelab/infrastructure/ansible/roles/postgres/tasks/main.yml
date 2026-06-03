@@ -85,3 +85,23 @@
     group: postgres
     mode: "0755"
   become: yes
+
+- name: Create pgbouncer schema and auth function
+  become: yes
+  become_user: postgres
+  postgresql_query:
+    query: |
+      CREATE SCHEMA IF NOT EXISTS pgbouncer;
+      CREATE OR REPLACE FUNCTION pgbouncer.get_auth(p_usename TEXT)
+      RETURNS TABLE(usename TEXT, passwd TEXT)
+      LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog
+      AS $$
+        SELECT usename::TEXT, passwd::TEXT
+        FROM pg_shadow WHERE usename = p_usename;
+      $$;
+      CREATE USER IF NOT EXISTS pgbouncer_auth WITH PASSWORD '{{ pgbouncer_auth_password }}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      CREATE USER IF NOT EXISTS pgbouncer_admin WITH PASSWORD '{{ pgbouncer_admin_password }}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      GRANT USAGE ON SCHEMA pgbouncer TO pgbouncer_auth;
+      GRANT EXECUTE ON FUNCTION pgbouncer.get_auth(TEXT) TO pgbouncer_auth;
+  run_once: true
+  when: patroni_role == 'primary'

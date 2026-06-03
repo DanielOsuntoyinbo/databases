@@ -72,3 +72,7 @@ pg_nodes:
 # Passwords — sourced from ansible vault
 replication_password: "{{ vault_replication_password }}"
 postgres_superuser_password: "{{ vault_postgres_superuser_password }}"
+
+# PgBouncer passwords — sourced from ansible vault
+pgbouncer_auth_password: "{{ vault_pgbouncer_auth_password }}"
+pgbouncer_admin_password: "{{ vault_pgbouncer_admin_password }}"
