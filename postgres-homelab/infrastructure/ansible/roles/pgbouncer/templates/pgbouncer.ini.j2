@@ -14,10 +14,11 @@ listen_port = {{ pgbouncer_port }}
 unix_socket_dir = /var/run/postgresql
 
 # Authentication
-auth_type = scram-sha-256
+auth_type = md5
 auth_file = {{ pgbouncer_config_dir }}/userlist.txt
-auth_query = SELECT usename, passwd FROM pg.bouncer.get_auth($1)
+auth_query = SELECT usename, passwd FROM pgbouncer.get_auth($1)
 auth_user = pgbouncer_auth
+auth_dbname = postgres
 
 # Pool settings
 pool_mode = {{ pgbouncer_pool_mode }}

@@ -1,15 +1,5 @@
 # userlist.txt — managed by Ansible
-# Generated from roles/pgbouncer/templates/userlist.txt.j2
-#
-# PgBouncer uses this file for authentication.
-# Format: "username" "password"
-#
-# NOTE: In production, passwords here should be md5 or scram hashes,
-# never plaintext. Generate with:
-#   echo -n "passwordusername" | md5sum → "md5<hash>"
-# Or use scram-sha-256 hashes from pg_shadow.
-#
-# pgbouncer_auth is a special low-privilege user used only for
-# auth_query lookups — it needs SELECT on pg_shadow.
+# Contains only pgbouncer_auth — used by PgBouncer to connect to PostgreSQL
+# and run auth_query to look up other users dynamically.
+# All other users are authenticated via auth_query against pg_shadow.
 "pgbouncer_auth" "{{ pgbouncer_auth_password }}"
-"pgbouncer_admin" "{{ pgbouncer_admin_password }}"
