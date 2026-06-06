@@ -1,0 +1,14 @@
+# pgbackrest-postgresql.conf — managed by Ansible
+# Generated from roles/pgbackrest/templates/pgbackrest-postgresql.conf.j2
+# Included by postgresql.conf via conf.d/ directory
+# Contains only pgBackRest-specific PostgreSQL settings
+
+# WAL archiving — required for pgBackRest continuous archiving
+archive_mode = on
+archive_command = 'pgbackrest --stanza={{ pgbackrest_stanza }} archive-push %p'
+
+# WAL level must be replica or higher for archiving
+wal_level = replica
+
+# Start archive as soon as possible
+archive_timeout = 60

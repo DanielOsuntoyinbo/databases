@@ -1,0 +1,24 @@
+---
+# roles/pgbackrest/defaults/main.yml
+
+pgbackrest_version: "2.58.0"
+pgbackrest_config_dir: "/etc/pgbackrest"
+pgbackrest_config_file: "/etc/pgbackrest/pgbackrest.conf"
+pgbackrest_log_dir: "/var/log/pgbackrest"
+pgbackrest_repo_path: "/var/lib/pgbackrest"
+pgbackrest_repo_host: "10.0.1.11"       # pg-01 hosts the backup repository
+pgbackrest_repo_host_user: "postgres"
+pgbackrest_stanza: "postgres-homelab"
+pgbackrest_primary_host: "10.0.1.12"   # pg-02 current primary — update after failover
+
+# Backup retention
+pgbackrest_retention_full: 2            # keep 2 full backups
+pgbackrest_retention_diff: 4            # keep 4 differential backups
+
+# Parallelism — tune to node CPU count
+pgbackrest_process_max: 2
+
+# Compression — zstandard is the modern enterprise standard
+# Fast speed, high ratio, used by Netflix/Facebook/major cloud providers
+pgbackrest_compress_type: "zst"
+pgbackrest_compress_level: 3            # 1-19, 3 is the sweet spot for speed/ratio

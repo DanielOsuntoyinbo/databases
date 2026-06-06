@@ -11,6 +11,8 @@
     state: present
     update_cache: yes
   become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
 - name: Create pgbouncer system group
   group:

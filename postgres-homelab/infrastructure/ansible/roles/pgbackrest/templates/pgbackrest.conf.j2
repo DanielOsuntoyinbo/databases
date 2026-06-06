@@ -1,0 +1,42 @@
+# pgbackrest.conf — managed by Ansible
+# Generated from roles/pgbackrest/templates/pgbackrest.conf.j2
+
+[global]
+{% if private_ip == pgbackrest_repo_host %}
+# Repo host config — repository is local, PostgreSQL is remote
+repo1-path={{ pgbackrest_repo_path }}
+{% else %}
+# Non-repo host config — repository is remote
+repo1-host={{ pgbackrest_repo_host }}
+repo1-host-user={{ pgbackrest_repo_host_user }}
+repo1-path={{ pgbackrest_repo_path }}
+{% endif %}
+
+# Retention
+repo1-retention-full={{ pgbackrest_retention_full }}
+repo1-retention-diff={{ pgbackrest_retention_diff }}
+
+# Performance
+process-max={{ pgbackrest_process_max }}
+
+# Logging
+log-level-console=info
+log-level-file=detail
+log-path={{ pgbackrest_log_dir }}
+
+# Compression
+compress-type={{ pgbackrest_compress_type }}
+compress-level={{ pgbackrest_compress_level }}
+
+[global:archive-push]
+compress-async=y
+compress-async-path=/tmp/pgbackrest-archive-async
+
+[{{ pgbackrest_stanza }}]
+pg1-path={{ postgresql_data_dir }}
+pg1-port={{ postgresql_port }}
+{% if private_ip == pgbackrest_repo_host %}
+# Repo host connects to primary via SSH for backup operations
+pg1-host={{ pgbackrest_primary_host }}
+pg1-host-user={{ pgbackrest_repo_host_user }}
+{% endif %}

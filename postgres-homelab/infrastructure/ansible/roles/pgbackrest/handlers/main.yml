@@ -1,0 +1,8 @@
+---
+# roles/pgbackrest/handlers/main.yml
+
+- name: reload postgresql
+  systemd:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: reloaded
+  become: yes

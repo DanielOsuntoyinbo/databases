@@ -1,0 +1,122 @@
+---
+# roles/pgbackrest/tasks/main.yml
+# Installs and configures pgBackRest for backup and PITR.
+# Architecture:
+#   - pgBackRest installed on ALL nodes
+#   - Backup repository hosted on pg-01 (pgbackrest_repo_host)
+#   - Primary node streams WAL to repository
+#   - Any node can perform a restore
+
+- name: Check if pgBackRest is alrwady installed
+  command: /usr/bin/pgbackrest version
+  register: pgbackrest_installed
+  failed_when: false
+  changed_when: false
+  become: yes
+
+- name: Install pgBackRest
+  apt:
+    name: "pgbackrest={{ pgbackrest_version }}-*"
+    state: present
+    update_cache: yes
+  become: yes
+  environment: 
+    DEBIAN_FRONTEND: noninteractive
+  when: pgbackrest_installed.rc != 0
+
+- name: Create pgBackRest config directory
+  file:
+    path: "{{ pgbackrest_config_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: yes
+
+- name: Create pgBackRest log directory
+  file:
+    path: "{{ pgbackrest_log_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: yes
+
+- name: Create pgBackRest repository directory (repo host only)
+  file:
+    path: "{{ pgbackrest_repo_path }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: yes
+  when: private_ip == pgbackrest_repo_host
+
+- name: Deploy pgBackRest configuration
+  template:
+    src: pgbackrest.conf.j2
+    dest: "{{ pgbackrest_config_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: yes
+
+- name: Ensure conf.d directory exists
+  file:
+    path: "{{ postgresql_config_dir }}/conf.d"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: yes
+
+- name: Configure PostgreSQL for WAL archiving
+  template:
+    src: pgbackrest-postgresql.conf.j2
+    dest: "{{ postgresql_config_dir }}/conf.d/pgbackrest.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: yes
+  notify: reload postgresql
+  when: patroni_role == 'primary'
+
+- name: Generate SSH key for postgres user on all nodes
+  user:
+    name: postgres
+    generate_ssh_key: yes
+    ssh_key_type: ed25519
+    ssh_key_comment: "pgbackrest@{{ inventory_hostname }}"
+  become: yes
+  register: postgres_ssh_key
+
+- name: Fetch postgres public key from all nodes
+  slurp:
+    src: /var/lib/postgresql/.ssh/id_ed25519.pub
+  register: postgres_pubkey
+  become: yes
+
+- name: Fetch repo host postgres public key
+  slurp:
+    src: /var/lib/postgresql/.ssh/id_ed25519.pub
+  register: repo_host_pubkey
+  become: yes
+  when: private_ip == pgbackrest_repo_host
+
+- name: Authorize repo host postgres key on all nodes
+  authorized_key:
+    user: postgres
+    key: "{{ hostvars[pgbackrest_repo_host_name]['repo_host_pubkey']['content'] | b64decode }}"
+    state: present
+  become: yes
+  vars:
+    pgbackrest_repo_host_name: "pg-01"
+
+- name: Authorize all node postgres keys on repo host
+  authorized_key:
+    user: postgres
+    key: "{{ hostvars[item]['postgres_pubkey']['content'] | b64decode }}"
+    state: present
+  loop: "{{ groups['postgres_cluster'] }}"
+  become: yes
+  when: private_ip == pgbackrest_repo_host
