@@ -7,30 +7,35 @@
 - [x] etcd 3.5.13 — distributed consensus store
 - [x] Patroni 3.3.2 — HA orchestration, failover verified
 - [x] PgBouncer 1.25.2 — connection pooling on all 3 nodes
+- [x] pgBackRest 2.58.0 — backup + PITR verified
 
 ## Current Cluster State
-- pg-01: 95.217.5.118 (Replica)
+- pg-01: 95.217.5.118 (Replica) — pgBackRest repo host
 - pg-02: 46.62.223.65 (Leader)
 - pg-03: 46.62.223.194 (Replica)
+
+## pgBackRest Details
+- Stanza: postgres-homelab
+- Repo: pg-01 at /var/lib/pgbackrest
+- Compression: zstandard (zst) level 3
+- Retention: 2 full, 4 differential
+- WAL archiving: enabled via Patroni DCS
+- PITR tested: DROP TABLE recovered successfully
+
+## Key Technical Decisions
+- pgBackRest repo host config omits pg1-host (local access)
+- Non-repo hosts omit repo1-host in favour of repo1-host
+- archive_mode requires patronictl restart (postmaster context)
+- Patroni DCS config written via etcdctl directly (patronictl edit-config has ydiff bug)
+- After etcd wipe, stanza must be recreated (system-id changes)
 
 ## PgBouncer Details
 - Pool mode: transaction
 - Auth type: md5 with auth_query via pgbouncer.get_auth()
 - Listening on: private IP port 6432
-- userlist.txt contains only pgbouncer_auth (plaintext)
-- All other users authenticated dynamically via auth_query
-- pgbouncer_auth has EXECUTE on pgbouncer.get_auth() function only
-
-## Key Technical Decisions
-- Server type: cx22 doesn't exist in hel1 — use cx23
-- Ubuntu pgbouncer package runs as postgres user not pgbouncer user
-- postgres user added to pgbouncer group for file access
-- auth_dbname = postgres required in pgbouncer.ini (PgBouncer 1.25 requirement)
-- scram-sha-256 caused issues with auth_query — using md5 instead
-- pg_hba.conf: 10.0.0.0/16 allowed with scram-sha-256 for app connections
+- auth_dbname = postgres required (PgBouncer 1.25 requirement)
 
 ## Next Steps
-- [ ] pgBackRest — backup + PITR
 - [ ] Prometheus + Grafana — observability
 - [ ] Minor version upgrade exercise (15.17 → 15.18)
 - [ ] Major version upgrade exercise (15 → 16)
