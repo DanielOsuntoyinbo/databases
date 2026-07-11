@@ -1,0 +1,141 @@
+# postgres_alerts.yml — managed by Ansible
+# Enterprise-grade alerting rules for PostgreSQL cluster
+# Generated from roles/monitoring/templates/postgres_alerts.yml.j2
+
+groups:
+  - name: postgresql
+    rules:
+
+      # --- Availability ---
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL down on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "PostgreSQL exporter cannot connect to PostgreSQL on {{ '{{' }} $labels.instance {{ '}}' }} for more than 1 minute."
+
+      - alert: PatroniLeaderAbsent
+        expr: count(patroni_master) < 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Patroni leader in cluster {{ patroni_cluster_name }}"
+          description: "No primary node detected in the cluster. Failover may be in progress or the cluster is down."
+
+      # --- Replication ---
+      - alert: ReplicationLagHigh
+        expr: pg_replication_lag > 104857600  # 100MB in bytes
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High replication lag on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Replication lag is {{ '{{' }} $value | humanize {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }}. Check network and primary load."
+
+      - alert: ReplicationLagCritical
+        expr: pg_replication_lag > 524288000  # 500MB in bytes
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical replication lag on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Replication lag is {{ '{{' }} $value | humanize {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }}. Standby is falling dangerously behind."
+
+      - alert: ReplicationSlotInactive
+        expr: pg_replication_slots_active == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inactive replication slot on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "A replication slot is inactive on {{ '{{' }} $labels.instance {{ '}}' }}. WAL may accumulate and fill disk."
+
+      # --- Connections ---
+      - alert: TooManyConnections
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High connection count on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "{{ '{{' }} $value | humanize {{ '}}' }} of max_connections used on {{ '{{' }} $labels.instance {{ '}}' }}. Consider tuning PgBouncer pool size."
+
+      - alert: IdleInTransactionConnections
+        expr: pg_stat_activity_max_tx_duration{state="idle in transaction"} > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Idle in transaction connections on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Connections idle in transaction for more than 5 minutes detected on {{ '{{' }} $labels.instance {{ '}}' }}. Check for application bugs or missing COMMIT."
+
+      # --- Storage ---
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Less than 20% disk space remaining on {{ '{{' }} $labels.instance {{ '}}' }}. Free space: {{ '{{' }} $value | humanize {{ '}}' }}."
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Less than 10% disk space remaining on {{ '{{' }} $labels.instance {{ '}}' }}. Immediate action required."
+
+      # --- Performance ---
+      - alert: LongRunningQuery
+        expr: pg_stat_activity_max_tx_duration{state="active"} > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Long running query on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "A query has been running for more than 5 minutes on {{ '{{' }} $labels.instance {{ '}}' }}. Check pg_stat_activity."
+
+      - alert: DeadlocksHigh
+        expr: rate(pg_stat_database_deadlocks[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deadlocks detected on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Deadlocks are occurring on {{ '{{' }} $labels.instance {{ '}}' }}. Check application transaction ordering."
+
+      # --- Checkpoints ---
+      - alert: CheckpointsTooFrequent
+        expr: rate(pg_stat_bgwriter_checkpoints_req[5m]) > rate(pg_stat_bgwriter_checkpoints_timed[5m])
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Requested checkpoints exceeding timed checkpoints on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "More checkpoints are being requested than scheduled. Consider increasing checkpoint_timeout or max_wal_size."
+
+  - name: node
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "CPU usage above 90% for 10 minutes on {{ '{{' }} $labels.instance {{ '}}' }}."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Memory usage above 90% on {{ '{{' }} $labels.instance {{ '}}' }}."

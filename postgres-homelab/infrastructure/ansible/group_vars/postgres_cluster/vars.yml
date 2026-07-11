@@ -76,3 +76,10 @@ postgres_superuser_password: "{{ vault_postgres_superuser_password }}"
 # PgBouncer passwords — sourced from ansible vault
 pgbouncer_auth_password: "{{ vault_pgbouncer_auth_password }}"
 pgbouncer_admin_password: "{{ vault_pgbouncer_admin_password }}"
+
+# Grafana — sourced from ansible vault
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+grafana_secret_key: "{{ vault_grafana_secret_key }}"
+
+# postgres_exporter password
+postgres_exporter_password: "{{ vault_postgres_exporter_password }}"

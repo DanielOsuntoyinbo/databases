@@ -1,0 +1,282 @@
+---
+# roles/monitoring/tasks/main.yml
+# Installs and configures the full observability stack:
+# node_exporter + postgres_exporter on ALL nodes
+# Prometheus + Alertmanager + Grafana on monitoring host (pg-01) only
+
+# -----------------------------------------------------------------------------
+# node_exporter — runs on ALL nodes
+# -----------------------------------------------------------------------------
+- name: Create node_exporter system user
+  user:
+    name: node_exporter
+    system: yes
+    shell: /sbin/nologin
+    create_home: no
+  become: yes
+
+- name: Check if node_exporter is installed
+  stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_binary
+
+- name: Download node_exporter
+  get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/node_exporter.tar.gz"
+    mode: "0644"
+  when: not node_exporter_binary.stat.exists
+  become: yes
+
+- name: Extract node_exporter
+  unarchive:
+    src: /tmp/node_exporter.tar.gz
+    dest: /tmp
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+  become: yes
+
+- name: Install node_exporter binary
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: /usr/local/bin/node_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+  become: yes
+  notify: restart node_exporter
+
+- name: Deploy node_exporter systemd service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  become: yes
+  notify: restart node_exporter
+
+- name: Enable and start node_exporter
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+# -----------------------------------------------------------------------------
+# postgres_exporter — runs on ALL nodes
+# -----------------------------------------------------------------------------
+- name: Create postgres_exporter system user
+  user:
+    name: "{{ postgres_exporter_user }}"
+    system: yes
+    shell: /sbin/nologin
+    create_home: no
+  become: yes
+
+- name: Check if postgres_exporter is installed
+  stat:
+    path: /usr/local/bin/postgres_exporter
+  register: postgres_exporter_binary
+
+- name: Download postgres_exporter
+  get_url:
+    url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+    dest: /tmp/postgres_exporter.tar.gz
+    mode: "0644"
+  when: not postgres_exporter_binary.stat.exists
+  become: yes
+
+- name: Extract postgres_exporter
+  unarchive:
+    src: /tmp/postgres_exporter.tar.gz
+    dest: /tmp
+    remote_src: yes
+  when: not postgres_exporter_binary.stat.exists
+  become: yes
+
+- name: Install postgres_exporter binary
+  copy:
+    src: "/tmp/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64/postgres_exporter"
+    dest: /usr/local/bin/postgres_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  when: not postgres_exporter_binary.stat.exists
+  become: yes
+  notify: restart postgres_exporter
+
+- name: Deploy postgres_exporter systemd service
+  template:
+    src: postgres_exporter.service.j2
+    dest: /etc/systemd/system/postgres_exporter.service
+    mode: "0644"
+  become: yes
+  notify: restart postgres_exporter
+
+- name: Enable and start postgres_exporter
+  systemd:
+    name: postgres_exporter
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+# -----------------------------------------------------------------------------
+# Prometheus + Alertmanager + Grafana — monitoring host (pg-01) only
+# -----------------------------------------------------------------------------
+- name: Create prometheus system user
+  user:
+    name: prometheus
+    system: yes
+    shell: /sbin/nologin
+    create_home: no
+  become: yes
+  when: private_ip == monitoring_host
+
+- name: Create prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "0755"
+  loop:
+    - "{{ prometheus_data_dir }}"
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_config_dir }}/rules"
+  become: yes
+  when: private_ip == monitoring_host
+
+- name: Check if prometheus is installed
+  stat:
+    path: /usr/local/bin/prometheus
+  register: prometheus_binary
+  when: private_ip == monitoring_host
+
+- name: Download prometheus
+  get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: /tmp/prometheus.tar.gz
+    mode: "0644"
+  when:
+    - private_ip == monitoring_host
+    - not prometheus_binary.stat.exists
+  become: yes
+
+- name: Extract prometheus
+  unarchive:
+    src: /tmp/prometheus.tar.gz
+    dest: /tmp
+    remote_src: yes
+  when:
+    - private_ip == monitoring_host
+    - not prometheus_binary.stat.exists
+  become: yes
+
+- name: Install prometheus binaries
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  loop:
+    - prometheus
+    - promtool
+  when:
+    - private_ip == monitoring_host
+    - not prometheus_binary.stat.exists
+  become: yes
+  notify: restart prometheus
+
+- name: Deploy prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  become: yes
+  when: private_ip == monitoring_host
+  notify: reload prometheus
+
+- name: Deploy prometheus alerting rules
+  template:
+    src: postgres_alerts.yml.j2
+    dest: "{{ prometheus_config_dir }}/rules/postgres_alerts.yml"
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  become: yes
+  when: private_ip == monitoring_host
+  notify: reload prometheus
+
+- name: Deploy prometheus systemd service
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+  become: yes
+  when: private_ip == monitoring_host
+  notify: restart prometheus
+
+- name: Enable and start prometheus
+  systemd:
+    name: prometheus
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+  when: private_ip == monitoring_host
+
+# -----------------------------------------------------------------------------
+# Grafana — monitoring host only
+# -----------------------------------------------------------------------------
+- name: Add Grafana apt repository key
+  get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.key
+    mode: "0644"
+  become: yes
+  when: private_ip == monitoring_host
+
+- name: Add Grafana apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+  become: yes
+  when: private_ip == monitoring_host
+
+- name: Install Grafana
+  apt:
+    name: grafana
+    state: present
+    update_cache: yes
+  become: yes
+  when: private_ip == monitoring_host
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Deploy Grafana configuration
+  template:
+    src: grafana.ini.j2
+    dest: "{{ grafana_config_dir }}/grafana.ini"
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  become: yes
+  when: private_ip == monitoring_host
+  notify: restart grafana
+
+- name: Enable and start Grafana
+  systemd:
+    name: grafana-server
+    state: started
+    enabled: yes
+  become: yes
+  when: private_ip == monitoring_host

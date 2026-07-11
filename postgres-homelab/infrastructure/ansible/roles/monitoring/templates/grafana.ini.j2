@@ -1,0 +1,42 @@
+# grafana.ini — managed by Ansible
+# Generated from roles/monitoring/templates/grafana.ini.j2
+
+[server]
+http_addr = {{ monitoring_host }}
+http_port = {{ grafana_port }}
+domain = {{ monitoring_host }}
+root_url = http://{{ monitoring_host }}:{{ grafana_port }}/
+
+[database]
+type = sqlite3
+path = {{ grafana_data_dir }}/grafana.db
+
+[security]
+admin_user = admin
+admin_password = {{ grafana_admin_password }}
+secret_key = {{ vault_grafana_secret_key }}
+disable_gravatar = true
+cookie_secure = false
+
+[users]
+allow_sign_up = false
+allow_org_create = false
+auto_assign_org = true
+auto_assign_org_role = Viewer
+
+[auth.anonymous]
+enabled = false
+
+[log]
+mode = file
+level = warn
+
+[log.file]
+log_rotate = true
+max_lines = 1000000
+max_size_shift = 28
+daily_rotate = true
+max_days = 7
+
+[unified_alerting]
+enabled = false

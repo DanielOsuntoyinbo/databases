@@ -1,0 +1,72 @@
+# prometheus.yml — managed by Ansible
+# Generated from roles/monitoring/templates/prometheus.yml.j2
+
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_scrape_interval }}
+  external_labels:
+    cluster: "{{ patroni_cluster_name }}"
+    environment: "production"
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "{{ monitoring_host }}:{{ alertmanager_port }}"
+
+# Load alerting rules
+rule_files:
+  - "{{ prometheus_config_dir }}/rules/*.yml"
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["{{ monitoring_host }}:{{ prometheus_port }}"]
+
+  # Node exporter — OS metrics from all nodes
+  - job_name: "node"
+    static_configs:
+      - targets:
+{% for host in groups['postgres_cluster'] %}
+          - "{{ hostvars[host]['private_ip'] }}:{{ node_exporter_port }}"
+{% endfor %}
+        labels:
+          cluster: "{{ patroni_cluster_name }}"
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.+"
+        target_label: instance
+        replacement: "${1}"
+
+  # PostgreSQL exporter — database metrics from all nodes
+  - job_name: "postgresql"
+    static_configs:
+      - targets:
+{% for host in groups['postgres_cluster'] %}
+          - "{{ hostvars[host]['private_ip'] }}:{{ postgres_exporter_port }}"
+{% endfor %}
+        labels:
+          cluster: "{{ patroni_cluster_name }}"
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.+"
+        target_label: instance
+        replacement: "${1}"
+
+  # Patroni — HA cluster metrics via REST API
+  - job_name: "patroni"
+    static_configs:
+      - targets:
+{% for host in groups['postgres_cluster'] %}
+          - "{{ hostvars[host]['private_ip'] }}:{{ patroni_port }}"
+{% endfor %}
+        labels:
+          cluster: "{{ patroni_cluster_name }}"
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.+"
+        target_label: instance
+        replacement: "${1}"

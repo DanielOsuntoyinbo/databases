@@ -1,0 +1,25 @@
+[Unit]
+Description=Prometheus PostgreSQL Exporter
+Documentation=https://github.com/prometheus-community/postgres_exporter
+After=network.target
+
+[Service]
+Type=simple
+User={{ postgres_exporter_user }}
+Group={{ postgres_exporter_user }}
+Environment="DATA_SOURCE_NAME=user=postgres_exporter password={{ postgres_exporter_password }} host={{ private_ip }} port={{ postgresql_port }} sslmode=disable"
+ExecStart=/usr/local/bin/postgres_exporter \
+  --web.listen-address={{ private_ip }}:{{ postgres_exporter_port }} \
+  --collector.stat_bgwriter \
+  --collector.stat_database \
+  --collector.replication \
+  --collector.stat_user_tables \
+  --collector.stat_statements \
+  --collector.locks \
+  --collector.wal \
+  --collector.replication_slot
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

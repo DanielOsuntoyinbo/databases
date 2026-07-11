@@ -1,0 +1,35 @@
+---
+# roles/monitoring/defaults/main.yml
+
+# Prometheus
+prometheus_version: "2.51.0"
+prometheus_port: 9090
+prometheus_data_dir: "/var/lib/prometheus"
+prometheus_config_dir: "/etc/prometheus"
+prometheus_retention_time: "30d"
+prometheus_scrape_interval: "15s"
+
+# Alertmanager
+alertmanager_version: "0.27.0"
+alertmanager_port: 9093
+alertmanager_config_dir: "/etc/alertmanager"
+alertmanager_data_dir: "/var/lib/alertmanager"
+
+# node_exporter
+node_exporter_version: "1.7.0"
+node_exporter_port: 9100
+
+# postgres_exporter
+postgres_exporter_version: "0.15.0"
+postgres_exporter_port: 9187
+postgres_exporter_user: "postgres_exporter"
+
+# Grafana
+grafana_version: "13.1.0"
+grafana_port: 3000
+grafana_data_dir: "/var/lib/grafana"
+grafana_config_dir: "/etc/grafana"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# Which node runs Prometheus + Grafana
+monitoring_host: "10.0.1.11"           # pg-01

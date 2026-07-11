@@ -60,9 +60,9 @@
     - role: pgbackrest
       tags: pgbackrest
 
-# - name: Configure monitoring
-#   hosts: postgres_cluster
-#   become: yes
-#   roles:
-#     - role: monitoring
-#       tags: monitoring
+- name: Configure monitoring
+  hosts: postgres_cluster
+  become: yes
+  roles:
+    - role: monitoring
+      tags: monitoring
