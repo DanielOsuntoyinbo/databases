@@ -15,6 +15,7 @@ engineering patterns and serves as a deliberate learning platform.
 | mariadb-homelab | 🔜 Planned | MariaDB Galera Cluster |
 | cassandra-homelab | 🔜 Planned | Apache Cassandra multi-node |
 | sqlserver-homelab | 🔜 Planned | SQL Server Always On AG |
+| yugabyte-homelab | 🔜 Planned | YugabyteDB distributed SQL cluster |
 
 ## Engineering Principles
 
