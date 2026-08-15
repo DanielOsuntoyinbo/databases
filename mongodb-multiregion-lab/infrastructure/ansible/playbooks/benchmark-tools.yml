@@ -1,0 +1,6 @@
+---
+- name: Deploy the write/read latency benchmark script to all nodes
+  hosts: replicaset
+  become: true
+  roles:
+    - benchmark-tools

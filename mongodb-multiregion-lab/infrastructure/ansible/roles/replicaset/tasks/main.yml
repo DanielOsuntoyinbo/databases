@@ -1,0 +1,74 @@
+---
+- name: Wait for mongod to accept connections
+  ansible.builtin.wait_for:
+    host: "{{ private_ip }}"
+    port: "{{ psmdb_port }}"
+    timeout: 60
+
+- name: Render rs.initiate() script
+  ansible.builtin.template:
+    src: rs_initiate.js.j2
+    dest: /tmp/rs_initiate.js
+    mode: "0600"
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+
+- name: Check whether the replica set is already initiated
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }} --eval "rs.status().ok"
+  register: rs_status_check
+  changed_when: false
+  failed_when: false
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+
+- name: Run rs.initiate() (first run only)
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }} --file /tmp/rs_initiate.js
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+  when: "'1' not in rs_status_check.stdout"
+
+- name: Wait for a PRIMARY to be elected
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    "rs.status().members.some(m => m.stateStr === 'PRIMARY')"
+  register: primary_check
+  until: "'true' in primary_check.stdout"
+  retries: 12
+  delay: 5
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+  changed_when: false
+
+# MongoDB's localhost exception lets this run without credentials as
+# long as no user exists yet — it stops working the instant the first
+# user is created, which is exactly this task. Every admin action
+# after this point needs psmdb_admin_user/psmdb_admin_password.
+- name: Create the admin user (localhost exception, first run only)
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    'db.getSiblingDB("admin").createUser({user: "{{ psmdb_admin_user }}",
+    pwd: "{{ psmdb_admin_password }}", roles: [{role: "root", db: "admin"}]})'
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+  register: create_admin
+  failed_when: create_admin.rc != 0 and 'already exists' not in create_admin.stderr
+  changed_when: "'already exists' not in create_admin.stderr"
+  no_log: true
+
+- name: Report final rs.status() for verification
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }}
+    -u {{ psmdb_admin_user }} -p {{ psmdb_admin_password }} --authenticationDatabase admin
+    --eval "JSON.stringify(rs.status().members.map(m => ({name: m.name, state: m.stateStr})))"
+  run_once: true
+  delegate_to: "{{ groups['region_london'][0] }}"
+  register: final_status
+  changed_when: false
+  no_log: true
+
+- name: Print member states
+  ansible.builtin.debug:
+    var: final_status.stdout
+  run_once: true

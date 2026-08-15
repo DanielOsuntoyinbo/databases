@@ -1,0 +1,87 @@
+---
+# Freshly-booted Ubuntu AMIs run cloud-init/unattended-upgrades in the
+# background right after boot, which can hold the dpkg lock for a
+# minute or two. Without this, apt tasks racing that background
+# process fail with "dpkg frontend lock was locked by another
+# process" — intermittent, not a real error, but worth waiting out
+# rather than hitting it every time a node is freshly launched.
+- name: Wait for any other process to release the dpkg lock
+  ansible.builtin.shell: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+  changed_when: false
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - gnupg2
+      - curl
+      - ca-certificates
+      - chrony
+    state: present
+
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: Etc/UTC
+
+- name: Ensure chrony is enabled and running
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+
+# Clock drift matters more than usual here: election timestamps and
+# oplog ordering across 3 regions are easier to reason about on stage
+# if all 3 nodes' clocks actually agree, not just "close enough."
+
+- name: Disable Transparent Huge Pages at boot (systemd unit)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages (THP) - MongoDB/WiredTiger recommendation
+      DefaultDependencies=no
+      After=sysinit.target local-fs.target
+      Before=mongod.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+      [Install]
+      WantedBy=basic.target
+  register: thp_unit
+
+- name: Reload systemd if THP unit changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: thp_unit.changed
+
+- name: Enable disable-thp.service
+  ansible.builtin.systemd:
+    name: disable-thp.service
+    enabled: true
+    state: started
+
+- name: Set vm.swappiness for WiredTiger
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "1"
+    state: present
+    sysctl_set: true
+
+- name: Raise ulimits for the mongod process
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-mongodb.conf
+    mode: "0644"
+    content: |
+      mongodb soft nofile 64000
+      mongodb hard nofile 64000
+      mongodb soft nproc 64000
+      mongodb hard nproc 64000

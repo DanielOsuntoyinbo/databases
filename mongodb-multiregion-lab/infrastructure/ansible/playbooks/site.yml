@@ -1,0 +1,13 @@
+---
+- name: Provision OS + PSMDB on all replica set nodes
+  hosts: replicaset
+  become: true
+  roles:
+    - common
+    - psmdb
+
+- name: Initiate the replica set and create the admin user
+  hosts: replicaset
+  become: true
+  roles:
+    - replicaset

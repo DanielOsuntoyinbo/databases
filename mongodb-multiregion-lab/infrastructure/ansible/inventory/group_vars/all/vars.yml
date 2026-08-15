@@ -1,0 +1,19 @@
+---
+psmdb_version: "7.0.39-21"
+psmdb_replset_name: "psmdb-multiregion-lab"
+
+psmdb_db_path: /var/lib/mongodb
+psmdb_log_path: /var/log/mongodb/mongod.log
+psmdb_port: 27017
+psmdb_keyfile_path: /etc/mongodb-keyfile
+
+# Auth is on from the start (keyfile-based intra-cluster auth). TLS
+# between members is deferred — see docs/00-lab-architecture-and-build-plan.md
+# section 10 "open items". Traffic is still confined to the VPC/SG
+# boundary either way, so this is a reasonable lab trade-off, not a
+# silent gap.
+psmdb_auth_enabled: true
+
+# The admin user created on first initiate. Password comes from vault,
+# not here — see group_vars/vault.yml.example.
+psmdb_admin_user: psmdb_admin

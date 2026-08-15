@@ -1,0 +1,14 @@
+---
+- name: Install python3-pymongo
+  ansible.builtin.apt:
+    name: python3-pymongo
+    state: present
+    update_cache: true
+
+- name: Deploy the write/read latency benchmark script
+  ansible.builtin.copy:
+    src: write_read_latency.py
+    dest: /home/ubuntu/write_read_latency.py
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"

@@ -1,0 +1,21 @@
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/terraform.tfstate
+infrastructure/terraform/terraform.tfstate.backup
+infrastructure/terraform/tfplan
+infrastructure/terraform/terraform.tfvars
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — it pins
+# provider versions and should be committed, same reasoning as a
+# package-lock.json.
+
+# Ansible — generated inventory, safe to regenerate via `make inventory`
+infrastructure/ansible/inventory/hosts.yml
+*.retry
+
+# Never commit an unencrypted vault, even accidentally
+infrastructure/ansible/inventory/group_vars/all/vault.yml.dec
+
+# Python / misc
+__pycache__/
+*.pyc
+.DS_Store

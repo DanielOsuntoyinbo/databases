@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in your own values.
+
+# Find your public IP: curl -s ifconfig.me
+# Must be in CIDR form with /32 for a single address.
+admin_ssh_cidr = "203.0.113.4/32"
+
+# Only override if your key isn't at the default path.
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"

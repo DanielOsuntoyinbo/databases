@@ -1,0 +1,15 @@
+# Copy to group_vars/vault.yml and encrypt with:
+#   ansible-vault encrypt group_vars/vault.yml
+#
+# psmdb_keyfile_content: the shared secret every mongod member uses to
+# authenticate to each other as a replica set. It must be IDENTICAL on
+# every node (that's the whole mechanism), 6-1024 chars, base64-safe.
+# Generate one with:
+#   openssl rand -base64 756 | tr -d '\n'
+#
+# psmdb_admin_password: password for the psmdb_admin user created on
+# first rs.initiate(). Generate one with:
+#   openssl rand -base64 32
+
+psmdb_keyfile_content: "REPLACE_ME_GENERATE_WITH_OPENSSL"
+psmdb_admin_password: "REPLACE_ME_GENERATE_WITH_OPENSSL"

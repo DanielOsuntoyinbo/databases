@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""
+Generates infrastructure/ansible/inventory/hosts.yml from Terraform
+outputs. Run via `make inventory` from the repo root — same pattern as
+the Postgres homelab's scripts/inventory/postgres.py.
+
+Assumes one replica set node per region for now (Topology A). Extend
+the REGIONS list / priority map here when Topology B (multi-AZ) or
+additional roles (configsvr/shard/mongos) get added in later phases.
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+TERRAFORM_DIR = Path(__file__).resolve().parents[3] / "terraform"
+INVENTORY_OUT = Path(__file__).resolve().parents[2] / "inventory" / "hosts.yml"
+
+# London preferred as primary (highest priority), matching the talk's
+# slide 21 "where do we prefer the primary" story.
+REGIONS = {
+    "london":  {"priority": 3, "member_id": 0},
+    "ireland": {"priority": 2, "member_id": 1},
+    "paris":   {"priority": 1, "member_id": 2},
+}
+
+
+def terraform_output() -> dict:
+    result = subprocess.run(
+        ["terraform", "output", "-json"],
+        cwd=TERRAFORM_DIR,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def build_inventory(tf_out: dict) -> dict:
+    public_ips = tf_out["replicaset_public_ips"]["value"]
+    private_ips = tf_out["replicaset_private_ips"]["value"]
+
+    region_groups = {}
+    all_hosts = {}
+
+    for region, cfg in REGIONS.items():
+        hostname = f"psmdb-{region}-replicaset-1"
+        public_ip = public_ips[region][0]
+        private_ip = private_ips[region][0]
+
+        all_hosts[hostname] = {
+            "ansible_host": public_ip,
+            "private_ip": private_ip,
+            "region": region,
+            "replicaset_member_id": cfg["member_id"],
+            "replicaset_priority": cfg["priority"],
+        }
+        region_groups[f"region_{region}"] = {"hosts": {hostname: None}}
+
+    inventory = {
+        "all": {
+            "children": {
+                "replicaset": {
+                    "children": region_groups,
+                },
+            },
+        },
+    }
+
+    # Flatten host vars into the top-level structure ansible expects
+    for region_key, group in region_groups.items():
+        hostname = next(iter(group["hosts"]))
+        group["hosts"][hostname] = all_hosts[hostname]
+
+    return inventory
+
+
+def to_yaml(data: dict) -> str:
+    # Minimal hand-rolled YAML emitter so this script has no
+    # dependency beyond the standard library — avoids requiring
+    # pyyaml just to generate a small inventory file.
+    import yaml  # noqa: local import, fall back below if unavailable
+    return yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
+
+
+def main():
+    tf_out = terraform_output()
+
+    required = ("replicaset_public_ips", "replicaset_private_ips")
+    missing = [k for k in required if k not in tf_out]
+    if missing:
+        print(f"Missing Terraform outputs: {missing}. Run 'terraform apply' first.", file=sys.stderr)
+        sys.exit(1)
+
+    inventory = build_inventory(tf_out)
+
+    INVENTORY_OUT.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        INVENTORY_OUT.write_text(to_yaml(inventory))
+    except ModuleNotFoundError:
+        print("pyyaml not installed. Run: pip install pyyaml --break-system-packages", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Wrote inventory to {INVENTORY_OUT}")
+
+
+if __name__ == "__main__":
+    main()

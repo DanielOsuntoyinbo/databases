@@ -1,0 +1,39 @@
+# Managed by Ansible — infrastructure/ansible/roles/psmdb/templates/mongod.conf.j2
+# Node: {{ inventory_hostname }} (region: {{ region }})
+
+storage:
+  dbPath: {{ psmdb_db_path }}
+  wiredTiger:
+    engineConfig:
+      journalCompressor: snappy
+
+systemLog:
+  destination: file
+  path: {{ psmdb_log_path }}
+  logAppend: true
+
+net:
+  port: {{ psmdb_port }}
+  # bindIp 0.0.0.0 is fine here — the security group is the actual
+  # boundary (port 27017 only from the 3 lab VPC CIDRs), not this.
+  bindIp: 0.0.0.0
+
+processManagement:
+  # Must match the packaged systemd unit's PIDFile= exactly — it's a
+  # flat file at /var/run/mongod.pid, no subdirectory. The unit's
+  # ExecStartPre helper script (percona-server-mongodb-helper.sh)
+  # pre-creates and chowns this exact path before mongod starts; if
+  # mongod writes its PID anywhere else, systemd watches an empty file
+  # forever and eventually times out waiting for a PID that's never
+  # coming, even though mongod itself is running fine.
+  fork: true
+  pidFilePath: /var/run/mongod.pid
+
+replication:
+  replSetName: "{{ psmdb_replset_name }}"
+
+{% if psmdb_auth_enabled %}
+security:
+  authorization: enabled
+  keyFile: {{ psmdb_keyfile_path }}
+{% endif %}

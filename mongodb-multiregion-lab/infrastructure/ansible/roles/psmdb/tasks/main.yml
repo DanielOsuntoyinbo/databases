@@ -1,0 +1,79 @@
+---
+- name: Wait for any other process to release the dpkg lock
+  ansible.builtin.shell: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+  changed_when: false
+
+- name: Download percona-release package
+  ansible.builtin.get_url:
+    url: https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+    dest: /tmp/percona-release_latest.generic_all.deb
+    mode: "0644"
+
+- name: Install percona-release
+  ansible.builtin.apt:
+    deb: /tmp/percona-release_latest.generic_all.deb
+    state: present
+
+- name: Enable the PSMDB 7.0 repository
+  ansible.builtin.command: percona-release setup psmdb-70
+  args:
+    creates: /etc/apt/sources.list.d/percona-psmdb-70-release.list
+
+- name: Update apt cache after adding Percona repo
+  ansible.builtin.apt:
+    update_cache: true
+
+# Pinned version, not "latest" — matches the PGDG-pinned discipline
+# from the Postgres homelab. Worth confirming the exact apt package
+# version string with `apt-cache policy percona-server-mongodb-server`
+# on a node before the first run, since Debian/Ubuntu package version
+# suffixes sometimes differ slightly from the upstream release string
+# (e.g. a `.jammy`/`.noble` or `-1` suffix) — if this task fails on
+# "version not found," that's what to check first.
+- name: Install Percona Server for MongoDB (pinned version)
+  ansible.builtin.apt:
+    name:
+      - "percona-server-mongodb-server={{ psmdb_version }}*"
+      - "percona-server-mongodb-mongos={{ psmdb_version }}*"
+      - "percona-server-mongodb-shell={{ psmdb_version }}*"
+    state: present
+    allow_downgrade: true
+
+- name: Stop mongod before reconfiguring (fresh install starts on defaults)
+  ansible.builtin.systemd:
+    name: mongod
+    state: stopped
+  failed_when: false
+
+- name: Ensure dbPath exists with correct ownership
+  ansible.builtin.file:
+    path: "{{ psmdb_db_path }}"
+    state: directory
+    owner: mongod
+    group: mongod
+    mode: "0750"
+
+- name: Write the shared replica set keyfile
+  ansible.builtin.copy:
+    dest: "{{ psmdb_keyfile_path }}"
+    content: "{{ psmdb_keyfile_content }}"
+    owner: mongod
+    group: mongod
+    mode: "0400"
+  no_log: true
+
+- name: Deploy mongod.conf
+  ansible.builtin.template:
+    src: mongod.conf.j2
+    dest: /etc/mongod.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mongod
+
+- name: Ensure mongod is enabled and started
+  ansible.builtin.systemd:
+    name: mongod
+    enabled: true
+    state: started
