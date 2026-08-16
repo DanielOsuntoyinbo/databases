@@ -21,18 +21,37 @@ scenario is run — this is the source for slide evidence, not memory.
 
 ## 1. Replica set configuration (slides 13, 14, 21)
 
-`rs.conf()` — London primary-preferred (priority 3), region tags on every member:
+`rs.conf()` — London primary-preferred (priority 3), region tags on every member.
+Members are addressed by region-named hostname (`psmdb-london` etc.), not raw
+IP — resolved via an `/etc/hosts` alias layer templated by the `common`
+Ansible role, so this stays readable even if the underlying private IPs
+ever change on a rebuild:
 
 ```javascript
 {
   _id: 'psmdb-multiregion-lab',
+  version: 2,
   members: [
-    { _id: 0, host: '10.10.1.107:27017', priority: 3, tags: { region: 'london' } },
-    { _id: 1, host: '10.20.1.173:27017', priority: 2, tags: { region: 'ireland' } },
-    { _id: 2, host: '10.30.1.199:27017', priority: 1, tags: { region: 'paris' } }
+    { _id: 0, host: 'psmdb-london:27017', priority: 3, tags: { region: 'london' } },
+    { _id: 1, host: 'psmdb-ireland:27017', priority: 2, tags: { region: 'ireland' } },
+    { _id: 2, host: 'psmdb-paris:27017', priority: 1, tags: { region: 'paris' } }
   ]
 }
 ```
+
+**Correction to an earlier assumption, worth keeping visible rather than
+quietly fixing:** During testing, London's `mongod` was restarted (as a
+side effect of an unrelated Ansible config change) and rejoined the set
+as SECONDARY, as expected. It was initially assumed this would require
+a manual/forced election to reclaim PRIMARY. That was wrong —
+`rs.status().electionCandidateMetrics.lastElectionReason` showed
+`'priorityTakeover'`: once London had fully caught up, MongoDB
+automatically triggered an election to hand PRIMARY back to it, purely
+because of its higher configured priority. **Priority isn't just a tiebreaker
+at initial election — it's actively enforced on an ongoing basis.** Good,
+accurate, slightly more interesting evidence for slide 21 than originally
+planned — the correction is more useful than the original assumption
+would have been.
 
 ## 2. Baseline cross-region latency (slides 15, 24)
 
@@ -41,8 +60,8 @@ from London (PRIMARY):
 
 | Link | pingMs |
 |---|---|
-| London → Ireland | 11ms |
-| London → Paris | 9ms |
+| London → Ireland | 9–11ms (measured at two different points; normal variance) |
+| London → Paris | 7–9ms (measured at two different points; normal variance) |
 
 This is real AWS backbone latency, not synthetic — no `tc netem` injection
 used (deliberate call: organic latency is more defensible on stage than
