@@ -175,18 +175,52 @@ Same benchmark, `--op read`, London primary.
 
 ---
 
+## 5. Primary failure, election & recovery (slides 16–17, 30–32)
+
+Full raw captures live in `docs/evidence-raw/` (see that directory's
+README for the naming convention).
+
+| Time (UTC) | Event | Detail |
+|---|---|---|
+| 2026-08-16 14:43:54 | Baseline captured | London PRIMARY, Ireland pingMs=11, Paris pingMs=8. `docs/evidence-raw/rs-status-before-primary-failure-20260816.txt` |
+| 2026-08-16 14:48:23 → 14:48:39 | mongod stopped on London | Graceful `systemctl stop`, 16s shutdown duration |
+| 2026-08-16 14:48:23.953 | Election started | `"Starting an election due to step up request"` — triggered by London's own graceful-shutdown signal, not a heartbeat timeout |
+| 2026-08-16 14:48:23.975 | Election won | Paris voted yes (term 18); London unreachable (`ShutdownInProgress` — still mid-shutdown when the vote request arrived) |
+| 2026-08-16 14:48:24.003 | Ireland writable as PRIMARY | `"Transition to primary complete; database writes are now permitted"`. Full log: `docs/evidence-raw/election-log-ireland-becomes-primary-20260816.txt` |
+| 2026-08-16 14:58:38 | London restarted | `systemctl start mongod` |
+| 2026-08-16 14:58:50.383 | London reclaimed PRIMARY | Automatic priority takeover, ~12.4s after restart |
+| 2026-08-16 14:59:30 | Recovery confirmed | Both Ireland and Paris showing `replLag: 0 secs` — fully caught up |
+
+**Two distinct RTO numbers, worth presenting separately rather than
+averaged into one — they answer different questions:**
+
+- **Failover RTO (failure → new primary): ~50ms.** Specific to a
+  *graceful* shutdown — the outgoing primary proactively signals the
+  handover rather than the cluster discovering it's gone via heartbeat
+  timeout. An ungraceful failure (crash, `kill -9`, network partition)
+  would need to wait out the full 10s `electionTimeoutMillis` instead,
+  since there's no clean signal to react to. **Not yet tested** — worth
+  running as a follow-up scenario (`systemctl kill -s SIGKILL mongod`)
+  for a genuine side-by-side "planned vs unplanned" comparison.
+- **Reclaim RTO (restart → priority takeover): ~12.4s.** Time for
+  London to restart, rejoin as secondary, catch up on the oplog, and
+  trigger an automatic priority-takeover election once eligible.
+
+**RPO: zero data loss confirmed.** Both secondaries showed
+`replLag: 0 secs` by the time recovery was checked — nothing
+acknowledged under `w:"majority"` was lost across either transition.
+
 ## Next up (Phase 4)
 
 - Arbiter toggle (slide 26): add/remove a non-data-bearing voter,
   observe `rs.status()` vote distribution.
-- Primary failure + election (slides 16–17): stop mongod on London,
-  capture `rs.status()` before/after, election log lines.
+- Hard/ungraceful failure comparison (slides 16-17, RTO): `systemctl
+  kill -s SIGKILL mongod` instead of `stop`, compare RTO against the
+  ~50ms graceful-shutdown number already captured — expect something
+  closer to the full 10s `electionTimeoutMillis`.
 - Regional outage (slide 18): stop all members in one region via
   Ansible `--limit`, capture majority-writable state with 2/3 up.
 - Same outage, different topology (slide 19): alter `rs.conf()`
   (e.g. different vote distribution), repeat the outage, compare.
 - Priority change (slide 21 continuation): flip priorities live, force
   election, capture resulting primary.
-- Recovery / RTO-RPO (slides 30–32): restore stopped members, capture
-  replication catch-up via `rs.printSecondaryReplicationInfo()` lag
-  decreasing to 0, timestamped.
