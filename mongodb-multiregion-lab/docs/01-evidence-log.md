@@ -175,7 +175,7 @@ Same benchmark, `--op read`, London primary.
 
 ---
 
-## 5. Primary failure, election & recovery (slides 16–17, 30–32)
+## 6. Primary failure, election & recovery (slides 16–17, 30–32)
 
 Full raw captures live in `docs/evidence-raw/` (see that directory's
 README for the naming convention).
@@ -273,7 +273,7 @@ finding, caveat the specific numbers as idle-cluster measurements.
 Don't imply these durations would hold in production — that's the
 kind of claim a technical audience will correctly push back on in Q&A.
 
-## 6. 2+2+1 topology: even-vote-count anti-pattern & partition demo (slides 8, 10, 19, 26)
+## 7. 2+2+1 topology: even-vote-count anti-pattern & partition demo (slides 8, 10, 19, 26)
 
 ### Build
 
@@ -457,9 +457,9 @@ who only remembers "add an arbiter, problem solved" would be wrong in
 a way that matters in production. Found live, not planned — a better
 result than if this had been scripted in advance.
 
-## 7. Region-majority anti-pattern: odd total votes is necessary but not sufficient (slides 8, 10, 19, 26)
+## 8. Region-majority anti-pattern: odd total votes is necessary but not sufficient (slides 8, 10, 19, 26)
 
-Direct follow-up to section 6's even-vote-count demo — same failure
+Direct follow-up to section 7's even-vote-count demo — same failure
 signature (`NotWritablePrimary`, repeated "cannot see a majority"
 refusals), different root cause. Point: **an odd total vote count
 alone doesn't guarantee safety if one region holds a majority by
@@ -516,7 +516,7 @@ db.getSiblingDB("benchmark").latency_test.insertOne({test: "region-majority-anti
 // MongoServerError[NotWritablePrimary]: not primary
 ```
 
-Log confirms the same repeated, correct refusal pattern as section 6
+Log confirms the same repeated, correct refusal pattern as section 7
 (full capture: `docs/evidence-raw/region-majority-antipattern-log-20260816.txt`):
 ```
 "Not starting an election, since we are not electable"
@@ -538,13 +538,30 @@ odd total, *and* no region concentrated above 50%. This 2+2+1 (with
 the arbiter, not this 2+3 variant) satisfies both; 2+3 only satisfies
 the first.
 
-## Next up (Phase 4)
+## Status summary — what's actually left
 
-- Arbiter toggle (slide 26): add/remove a non-data-bearing voter,
-  observe `rs.status()` vote distribution.
-- Regional outage (slide 18): stop all members in one region via
-  Ansible `--limit`, capture majority-writable state with 2/3 up.
-- Same outage, different topology (slide 19): alter `rs.conf()`
-  (e.g. different vote distribution), repeat the outage, compare.
-- Priority change (slide 21 continuation): flip priorities live, force
-  election, capture resulting primary.
+Everything in the original Phase 4 scenario catalogue is now **done**:
+- ~~Arbiter toggle~~ ✅ done, plus the write-concern nuance
+- ~~Regional outage~~ ✅ done twice (even-vote partition, region-majority) — more thorough than originally planned
+- ~~Same outage, different topology~~ ✅ this is literally what sections 6 vs 7 are — same failure, two different topologies, directly comparable
+- ~~Priority change~~ ✅ observed repeatedly and organically (the tied-priority nondeterminism finding across multiple elections) — not a dedicated scripted demo, but real evidence of priority behavior exists
+
+**Genuinely remaining:**
+- **Phase 5 — sharded cluster** (slides 34–37): config server replica
+  set, shard replica set(s), `mongos` routers. Not started.
+- *(Optional, not blocking)* A dedicated live priority-flip demo
+  (set priority, force a specific election, show the intended primary
+  win) — the *concept* is evidenced, but not as a clean standalone
+  scripted moment. Worth doing only if slide 21 needs a cleaner visual
+  than what already exists.
+
+## Next up (Phase 5)
+
+- Config server replica set (CSRS), 3 members, 1 per region — same
+  region-tag pattern as the main replica set.
+- Shard replica set(s) — start with 1 shard, each internally spread
+  1-per-region, matching the original build plan's scope trim.
+- `mongos` routers, 1 per region.
+- Repeat the regional-outage scenario against the sharded cluster —
+  one shard's region down, confirm `mongos`/unaffected-shard
+  availability (slides 34–37's actual point).
