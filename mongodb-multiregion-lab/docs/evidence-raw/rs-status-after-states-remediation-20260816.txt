@@ -1,0 +1,70 @@
+Retroactive remediation — rs.status() "after" states for scenarios
+that had a "before" captured but were missing the corresponding
+"after". All text below is verbatim from the actual session, not
+reconstructed or approximated.
+
+================================================================
+1. GRACEFUL PRIMARY FAILURE — AFTER (recovery confirmed)
+Corresponding "before": rs-status-before-primary-failure-20260816.txt
+Corresponding election log: election-log-ireland-becomes-primary-20260816.txt
+================================================================
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+
+psmdb-london:27017 PRIMARY 1
+psmdb-ireland:27017 SECONDARY 1
+psmdb-paris:27017 SECONDARY 1
+
+London reclaimed PRIMARY via automatic priority takeover after
+restart + catch-up, as documented in 01-evidence-log.md section 5.
+All three members healthy, zero replication lag confirmed separately
+via rs.printSecondaryReplicationInfo() at the time.
+
+================================================================
+2. UNGRACEFUL PRIMARY FAILURE — AFTER (recovery confirmed)
+Corresponding election log: election-log-ungraceful-failure-20260816.txt
+================================================================
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+
+psmdb-london:27017 PRIMARY 1
+psmdb-ireland:27017 SECONDARY 1
+psmdb-paris:27017 SECONDARY 1
+
+Third automatic priority-takeover reclaim observed in this session —
+consistent behavior, not a one-off. All three members healthy
+following the unclean-shutdown restart and WiredTiger recovery
+(215ms, documented in election-log-ungraceful-failure-20260816.txt).
+
+================================================================
+3. ARBITER ADDED — immediately after rs.addArb()
+Corresponding rs.conf(): rs-conf-topology-snapshots-20260816.txt (Stage 3)
+================================================================
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+
+psmdb-london:27017 SECONDARY 1
+psmdb-ireland:27017 SECONDARY 1
+psmdb-london-2:27017 PRIMARY 1
+psmdb-ireland-2:27017 SECONDARY 1
+psmdb-paris-arbiter:27017 ARBITER 1
+
+All 5 members healthy immediately after the arbiter joined — before
+the second partition test that revealed the write-concern nuance
+(see partition-demo-log-london-20260816.txt and 01-evidence-log.md
+section 6 "Critical nuance found live"). Note PRIMARY is
+psmdb-london-2, not psmdb-london — consistent with the tied-priority
+nondeterminism finding documented elsewhere in the log (both
+configured at priority 3, no fixed tiebreaker between them).
+
+================================================================
+Scope note
+================================================================
+
+This file covers the three most significant before/after gaps
+identified in a retroactive audit — not every single rs.status()
+call made during the session. Numerous intermediate status checks
+(confirming SSH connectivity, verifying idempotent Ansible re-runs,
+etc.) are deliberately not reconstructed here, consistent with
+keeping evidence-raw/ focused on scenario-defining moments rather
+than every routine verification step along the way.
