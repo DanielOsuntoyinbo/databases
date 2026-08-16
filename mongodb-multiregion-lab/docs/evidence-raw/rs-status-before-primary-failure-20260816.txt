@@ -1,0 +1,55 @@
+rs.status() — captured 2026-08-16 14:43:54 UTC, immediately before
+stopping mongod on London for the primary-failure/election/recovery
+scenario (slides 16-17, 30-32).
+
+Baseline state:
+- psmdb-london:27017  PRIMARY    health=1
+- psmdb-ireland:27017 SECONDARY  health=1  pingMs=11
+- psmdb-paris:27017   SECONDARY  health=1  pingMs=8
+
+(For context: London holds PRIMARY here via the automatic
+priorityTakeover election documented in 01-evidence-log.md section 1
+— lastElectionDate 2026-08-16T14:23:14.776Z, unrelated to this
+scenario, just the cluster's settled state going in.)
+
+Full rs.status() output:
+
+{
+  set: 'psmdb-multiregion-lab',
+  date: ISODate('2026-08-16T14:43:54.892Z'),
+  myState: 1,
+  term: Long('17'),
+  members: [
+    {
+      _id: 0,
+      name: 'psmdb-london:27017',
+      health: 1,
+      state: 1,
+      stateStr: 'PRIMARY',
+      uptime: 1262,
+      electionDate: ISODate('2026-08-16T14:23:14.000Z'),
+      self: true
+    },
+    {
+      _id: 1,
+      name: 'psmdb-ireland:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 1261,
+      pingMs: Long('11'),
+      syncSourceHost: 'psmdb-london:27017'
+    },
+    {
+      _id: 2,
+      name: 'psmdb-paris:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 1261,
+      pingMs: Long('8'),
+      syncSourceHost: 'psmdb-london:27017'
+    }
+  ],
+  ok: 1
+}

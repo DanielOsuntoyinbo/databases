@@ -1,0 +1,32 @@
+Election log, captured from psmdb-ireland:27017 after London's mongod
+was gracefully stopped. Trimmed to the meaningful lines — full log has
+extensive topology-change noise from the driver's monitoring thread,
+not reproduced here.
+
+London mongod stop initiated: 2026-08-16T14:48:23 UTC
+London mongod fully deactivated: 2026-08-16T14:48:39 UTC (16s graceful shutdown)
+
+{"t":{"$date":"2026-08-16T14:48:23.953+00:00"},"s":"I","c":"ELECTION","id":4615661,"ctx":"conn29","msg":"Starting an election due to step up request"}
+
+{"t":{"$date":"2026-08-16T14:48:23.953+00:00"},"s":"I","c":"ELECTION","id":21437,"ctx":"conn29","msg":"Skipping dry run and running for election","attr":{"newTerm":18}}
+
+{"t":{"$date":"2026-08-16T14:48:23.966+00:00"},"s":"I","c":"ELECTION","id":51799,"ctx":"ReplCoord-11","msg":"VoteRequester processResponse","attr":{"term":18,"dryRun":false,"failReason":"received an invalid response","error":{"code":91,"codeName":"ShutdownInProgress","errmsg":"In the process of shutting down"},"from":"psmdb-london:27017"}}
+
+{"t":{"$date":"2026-08-16T14:48:23.975+00:00"},"s":"I","c":"ELECTION","id":51799,"ctx":"ReplCoord-7","msg":"VoteRequester processResponse","attr":{"term":18,"dryRun":false,"vote":"yes","from":"psmdb-paris:27017"}}
+
+{"t":{"$date":"2026-08-16T14:48:23.975+00:00"},"s":"I","c":"ELECTION","id":21450,"ctx":"ReplCoord-7","msg":"Election succeeded, assuming primary role","attr":{"term":18}}
+
+{"t":{"$date":"2026-08-16T14:48:23.999+00:00"},"s":"I","c":"REPL","id":6015310,"ctx":"OplogApplier-0","msg":"Starting to transition to primary."}
+
+{"t":{"$date":"2026-08-16T14:48:24.000+00:00"},"s":"I","c":"REPL","id":6015309,"ctx":"OplogApplier-0","msg":"Logging transition to primary to oplog on stepup"}
+
+{"t":{"$date":"2026-08-16T14:48:24.003+00:00"},"s":"I","c":"REPL","id":21331,"ctx":"OplogApplier-0","msg":"Transition to primary complete; database writes are now permitted","attr":{"term":18}}
+
+--- Analysis ---
+
+Election started (14:48:23.953) to writable primary (14:48:24.003):
+~50ms total. London's vote-request response shows ShutdownInProgress,
+not a timeout/unreachable error — confirming London was still actively
+participating in a clean handoff at the moment of the vote, consistent
+with a graceful shutdown proactively triggering the handover rather
+than the cluster waiting out the full 10s heartbeat/election timeout.

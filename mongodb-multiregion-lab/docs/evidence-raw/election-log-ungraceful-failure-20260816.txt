@@ -1,0 +1,45 @@
+Election log, ungraceful failure scenario — psmdb-london was hard-killed
+(SIGKILL) while PRIMARY, contrast case against the earlier graceful
+shutdown scenario. Captured from psmdb-ireland:27017. Trimmed to the
+meaningful lines.
+
+London mongod SIGKILL sent: 2026-08-16T15:13:55 UTC
+systemctl confirms: Result: signal, code=killed, signal=KILL
+
+{"t":{"$date":"2026-08-16T15:14:06.131+00:00"},"s":"I","c":"ELECTION","id":4615652,"ctx":"ReplCoord-24","msg":"Starting an election, since we've seen no PRIMARY in election timeout period","attr":{"electionTimeoutPeriodMillis":10000}}
+
+{"t":{"$date":"2026-08-16T15:14:06.131+00:00"},"s":"I","c":"ELECTION","id":21438,"ctx":"ReplCoord-24","msg":"Conducting a dry run election to see if we could be elected","attr":{"currentTerm":19}}
+
+{"t":{"$date":"2026-08-16T15:14:06.144+00:00"},"s":"I","c":"ELECTION","id":51799,"ctx":"ReplCoord-27","msg":"VoteRequester processResponse","attr":{"term":19,"dryRun":true,"failReason":"failed to receive response","error":{"code":6,"codeName":"HostUnreachable","errmsg":"Error connecting to psmdb-london:27017 (10.10.1.107:27017) :: caused by :: onInvoke :: caused by :: Connection refused"},"from":"psmdb-london:27017"}}
+
+{"t":{"$date":"2026-08-16T15:14:06.151+00:00"},"s":"I","c":"ELECTION","id":51799,"ctx":"ReplCoord-26","msg":"VoteRequester processResponse","attr":{"term":19,"dryRun":true,"vote":"yes","from":"psmdb-paris:27017"}}
+
+{"t":{"$date":"2026-08-16T15:14:06.151+00:00"},"s":"I","c":"ELECTION","id":21444,"ctx":"ReplCoord-26","msg":"Dry election run succeeded, running for election","attr":{"newTerm":20}}
+
+{"t":{"$date":"2026-08-16T15:14:06.174+00:00"},"s":"I","c":"ELECTION","id":21450,"ctx":"ReplCoord-26","msg":"Election succeeded, assuming primary role","attr":{"term":20}}
+
+{"t":{"$date":"2026-08-16T15:14:06.222+00:00"},"s":"I","c":"REPL","id":21331,"ctx":"OplogApplier-0","msg":"Transition to primary complete; database writes are now permitted","attr":{"term":20}}
+
+--- London restart, unclean shutdown recovery ---
+{"t":{"$date":"2026-08-16T15:19:07.256+00:00"},"msg":"recovery rollback to stable has successfully finished and ran for 1 milliseconds"}
+{"t":{"$date":"2026-08-16T15:19:07.274+00:00"},"msg":"recovery was completed successfully and took 215ms, including 196ms for the log replay, 1ms for the rollback to stable, and 17ms for the checkpoint."}
+{"t":{"$date":"2026-08-16T15:19:07.341+00:00"},"msg":"Incrementing the rollback ID after unclean shutdown","attr":{"rbid":2}}
+{"t":{"$date":"2026-08-16T15:19:07.355+00:00"},"msg":"mongod startup complete","attr":{"Startup from clean shutdown?":false}}
+
+--- Analysis ---
+
+Kill (15:13:55) to election start (15:14:06.131): ~11.1s — bounded by
+electionTimeoutMillis=10000, plus heartbeat-interval overhead before
+the timeout timer starts counting.
+
+Election start to writable primary (15:14:06.131 -> 15:14:06.222):
+~91ms — same order of magnitude as the graceful case's ~50ms.
+
+Conclusion: the election protocol itself is fast regardless of trigger.
+Nearly the entire RTO difference between graceful (~50ms) and
+ungraceful (~11.1s) failure is DETECTION time, not election time.
+
+On restart, the unclean shutdown required actual WiredTiger recovery
+(log replay + rollback-to-stable + checkpoint, 215ms total) that the
+graceful restart did not need — explicitly confirmed by mongod's own
+"Startup from clean shutdown?": false log line.
