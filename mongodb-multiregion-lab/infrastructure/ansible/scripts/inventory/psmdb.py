@@ -53,6 +53,7 @@ def build_inventory(tf_out: dict) -> dict:
             "ansible_host": public_ip,
             "private_ip": private_ip,
             "region": region,
+            "psmdb_alias": f"psmdb-{region}",
             "replicaset_member_id": cfg["member_id"],
             "replicaset_priority": cfg["priority"],
         }
@@ -72,6 +73,45 @@ def build_inventory(tf_out: dict) -> dict:
     for region_key, group in region_groups.items():
         hostname = next(iter(group["hosts"]))
         group["hosts"][hostname] = all_hosts[hostname]
+
+    # Arbiter: standalone instance, own group, not part of the
+    # "replicaset" group's initial rs.initiate() member set — it gets
+    # added later via rs.addArb() as a deliberate, separate step.
+    if "arbiter_public_ip" in tf_out and "arbiter_private_ip" in tf_out:
+        arbiter_hostname = "psmdb-paris-arbiter-1"
+        inventory["all"]["children"]["arbiter"] = {
+            "hosts": {
+                arbiter_hostname: {
+                    "ansible_host": tf_out["arbiter_public_ip"]["value"],
+                    "private_ip": tf_out["arbiter_private_ip"]["value"],
+                    "region": "paris",
+                    "psmdb_alias": "psmdb-paris-arbiter",
+                }
+            }
+        }
+
+    # 2+2+1 extension: second data-bearing node per region. Kept in a
+    # separate group from "replicaset" — that group's tasks include
+    # the fresh-cluster rs.initiate() bootstrap logic, which should
+    # never run against these (already-bootstrapped cluster, these
+    # join later via a manual rs.add()).
+    extra_nodes = {
+        "london_2": "london",
+        "ireland_2": "ireland",
+    }
+    extra_hosts = {}
+    for key, region in extra_nodes.items():
+        pub_key, priv_key = f"{key}_public_ip", f"{key}_private_ip"
+        if pub_key in tf_out and priv_key in tf_out:
+            hostname = f"psmdb-{region}-2-replicaset-1"
+            extra_hosts[hostname] = {
+                "ansible_host": tf_out[pub_key]["value"],
+                "private_ip": tf_out[priv_key]["value"],
+                "region": region,
+                "psmdb_alias": f"psmdb-{region}-2",
+            }
+    if extra_hosts:
+        inventory["all"]["children"]["extra_replicaset"] = {"hosts": extra_hosts}
 
     return inventory
 

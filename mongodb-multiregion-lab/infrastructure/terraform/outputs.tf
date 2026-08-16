@@ -41,8 +41,8 @@ output "tgw_route_table_ids" {
 output "peering_attachment_ids" {
   value = {
     london_ireland = module.peering_london_ireland.peering_attachment_id
-    ireland_paris   = module.peering_ireland_paris.peering_attachment_id
-    london_paris    = module.peering_london_paris.peering_attachment_id
+    ireland_paris  = module.peering_ireland_paris.peering_attachment_id
+    london_paris   = module.peering_london_paris.peering_attachment_id
   }
 }
 
@@ -60,4 +60,28 @@ output "replicaset_private_ips" {
     ireland = module.replicaset_ireland.private_ips
     paris   = module.replicaset_paris.private_ips
   }
+}
+
+output "arbiter_public_ip" {
+  value = module.arbiter_paris.public_ips[0]
+}
+
+output "arbiter_private_ip" {
+  value = module.arbiter_paris.private_ips[0]
+}
+
+output "london_2_public_ip" {
+  value = module.replicaset_london_2.public_ips[0]
+}
+
+output "london_2_private_ip" {
+  value = module.replicaset_london_2.private_ips[0]
+}
+
+output "ireland_2_public_ip" {
+  value = module.replicaset_ireland_2.public_ips[0]
+}
+
+output "ireland_2_private_ip" {
+  value = module.replicaset_ireland_2.private_ips[0]
 }

@@ -273,6 +273,112 @@ finding, caveat the specific numbers as idle-cluster measurements.
 Don't imply these durations would hold in production — that's the
 kind of claim a technical audience will correctly push back on in Q&A.
 
+## 6. 2+2+1 topology: even-vote-count anti-pattern & partition demo (slides 8, 10, 19, 26)
+
+### Build
+
+Standalone arbiter instance (deliberate design choice, not co-located
+on an existing node — see rationale below): `t3.micro`, Paris region,
+hostname `psmdb-paris-arbiter` (`13.36.233.135` / `10.30.2.96`).
+
+Two new data-bearing nodes added via the same `ec2-fleet` Terraform
+module, second AZ per region for genuine within-region multi-AZ spread:
+- `psmdb-london-2` — `18.134.210.137` / `10.10.2.153`
+- `psmdb-ireland-2` — `108.129.131.192` / `10.20.2.217`
+
+**Why the arbiter is a standalone EC2 instance, not co-located:**
+initially built co-located (second `mongod` process, port 27020, on
+the existing Paris node) — this worked technically but was reconsidered
+for talk clarity. A standalone instance means `rs.conf()` shows a clean
+`psmdb-arbiter:27017` alongside the other hostnames rather than two
+processes sharing one box on different ports, which needs an extra
+sentence of explanation mid-talk. Cost difference is negligible
+(~$0.01/hr for a `t3.micro`). Also technically simpler to build: an
+arbiter is *just a regular mongod process* — there's no special
+"arbiter mode" in `mongod.conf`, arbiter status is purely a
+replica-set-config-level distinction (`rs.addArb()`). A dedicated
+instance reuses the standard `psmdb` Ansible role completely unchanged
+— no custom systemd unit, no non-standard port, none of the PID-file
+debugging the earlier co-located attempt required.
+
+`rs.add()` sequence — both joined healthy, priorities matching their
+region-mate: `psmdb-london-2` priority 3, `psmdb-ireland-2` priority 2.
+
+### The anti-pattern: even vote count
+
+`rs.remove("psmdb-paris:27017")` — Paris's original data-bearing
+member removed, leaving **4 voting data-bearing members**: London,
+London-2 (both region A), Ireland, Ireland-2 (both region B). No
+arbiter added yet at this point — deliberately sequenced to demonstrate
+the problem before the fix.
+
+```
+_id 0: psmdb-london:27017    priority 3  votes 1
+_id 1: psmdb-ireland:27017   priority 2  votes 1
+_id 3: psmdb-london-2:27017  priority 3  votes 1
+_id 4: psmdb-ireland-2:27017 priority 2  votes 1
+```
+
+**Known gap, not yet resolved:** `psmdb-london-2` and `psmdb-ireland-2`
+show `tags: {}` in `rs.conf()`, unlike the original members which carry
+`tags: { region: '...' }`. A fix was proposed (manual `rs.reconfig()`
+setting the tags) but not confirmed applied — check before relying on
+region-tagged `secondaryPreferred` reads against this topology.
+
+### Live partition demonstration
+
+Simulated a London↔Ireland network partition by stopping both Ireland
+nodes (outcome on vote math is identical to a real TGW link failure
+between the regions — London's side simply can't reach Ireland's votes
+either way).
+
+| Time (UTC) | Event |
+|---|---|
+| 18:55:03 | `psmdb-ireland` mongod stopped |
+| 18:57:06 | `psmdb-ireland-2` mongod stopped |
+| (shortly after) | London **stepped down from PRIMARY to SECONDARY** — with only 2 of 4 votes reachable (itself + London-2), can't maintain the 3-vote majority required |
+
+**Direct proof of write-unavailability** — attempted a real write from
+London while partitioned:
+```javascript
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "partition-demo", ts: new Date()})
+// MongoServerError[NotWritablePrimary]: not primary
+```
+A completely healthy 4-node cluster — every machine up and running —
+refusing every write. Not a crash, not a bug: the direct, correct
+consequence of an even vote count meeting a network split.
+
+**Repeated, explicit refusal in the logs** — over ~4 minutes
+(18:57:43 → 19:01:07), London retried an election roughly every 10-11s
+and correctly refused every single time, identical reason each time:
+```
+"Not starting an election, since we are not electable"
+reason: "Not standing for election because I cannot see a majority (mask 0x1)"
+```
+This is stronger evidence than a single log line — it shows the
+cluster's split-brain protection actively working, repeatedly, not
+just quietly giving up once. Full capture:
+`docs/evidence-raw/partition-demo-log-london-20260816.txt`
+
+### Recovery
+
+Both Ireland nodes restarted, cluster recovered cleanly: London
+SECONDARY, Ireland SECONDARY, **London-2 PRIMARY**, Ireland-2 SECONDARY.
+
+**Secondary finding worth noting:** London-2 won the post-recovery
+election, not London, despite both being configured at priority 3.
+Tied priority has no fixed tiebreaker — either can legitimately win.
+Not a bug, but worth knowing if a fully deterministic "always this
+specific node becomes primary" story is wanted for a slide; would need
+to break the tie (e.g. 3 vs 2.5) rather than leave them equal.
+
+### Next: the fix
+
+Arbiter not yet added to the replica set at time of writing this
+section — `rs.addArb("psmdb-paris-arbiter:27017")` is the next
+immediate step, bringing total votes to 5 (odd), fixing the exact
+failure mode just demonstrated. Evidence for that to follow.
+
 ## Next up (Phase 4)
 
 - Arbiter toggle (slide 26): add/remove a non-data-bearing voter,

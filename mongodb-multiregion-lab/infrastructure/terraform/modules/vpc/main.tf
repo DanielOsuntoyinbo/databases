@@ -55,7 +55,7 @@ resource "aws_route_table" "public" {
 resource "aws_route" "default_igw" {
   route_table_id         = aws_route_table.public.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id              = aws_internet_gateway.this.id
+  gateway_id             = aws_internet_gateway.this.id
 }
 
 resource "aws_route_table_association" "public" {

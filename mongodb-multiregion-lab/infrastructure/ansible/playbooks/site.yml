@@ -1,6 +1,6 @@
 ---
 - name: Provision OS + PSMDB on all replica set nodes
-  hosts: replicaset
+  hosts: replicaset:arbiter:extra_replicaset
   become: true
   roles:
     - common

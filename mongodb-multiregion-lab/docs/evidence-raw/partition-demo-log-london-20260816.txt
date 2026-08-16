@@ -1,0 +1,44 @@
+Partition demo — London↔Ireland network split simulated by stopping
+both Ireland nodes. Captured from psmdb-london's mongod.log.
+
+Timeline:
+2026-08-16 18:55:03 UTC — psmdb-ireland mongod stopped
+2026-08-16 18:57:06 UTC — psmdb-ireland-2 mongod stopped
+(London self-demoted from PRIMARY to SECONDARY shortly after — only
+2 of 4 configured votes reachable, cannot maintain 3-vote majority)
+
+Write attempt while partitioned:
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "partition-demo", ts: new Date()})
+-> MongoServerError[NotWritablePrimary]: not primary
+
+Repeated election-refusal log lines (every ~10-11s, ~4 minutes):
+
+{"t":{"$date":"2026-08-16T18:57:43.955+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-31","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:57:54.047+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-31","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:04.469+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-32","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:15.934+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-32","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:25.976+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-30","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:37.245+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-23","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:47.279+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-30","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:58:57.354+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-31","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:59:08.671+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-31","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T18:59:19.670+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-33","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T19:00:34.929+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-31","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T19:00:45.402+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-23","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T19:00:56.051+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-23","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T19:01:07.428+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-23","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+
+Recovery: both Ireland nodes restarted, cluster re-elected cleanly.
+Result: psmdb-london-2 became PRIMARY (not psmdb-london, despite equal
+priority 3 on both — tied priority has no fixed tiebreaker).
+
+--- Analysis ---
+
+This is the concrete demonstration of why MongoDB recommends odd
+vote counts. With 4 votes split 2-and-2 across two regions, a network
+partition between those regions leaves BOTH sides at exactly 2 votes —
+neither reaches the 3 needed for majority. The cluster doesn't fail
+ungracefully; it correctly and repeatedly refuses to elect a primary
+it can't legitimately claim majority support for. Every node stays
+healthy throughout — this is availability lost to correct split-brain
+protection, not to any failure.

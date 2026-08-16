@@ -28,11 +28,11 @@ resource "aws_ec2_transit_gateway" "this" {
 
 resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
   transit_gateway_id = aws_ec2_transit_gateway.this.id
-  vpc_id              = var.vpc_id
-  subnet_ids          = var.subnet_ids
+  vpc_id             = var.vpc_id
+  subnet_ids         = var.subnet_ids
 
   transit_gateway_default_route_table_association = true
-  transit_gateway_default_route_table_propagation  = true
+  transit_gateway_default_route_table_propagation = true
 
   tags = merge(var.tags, { Name = "${var.name}-vpc-attachment" })
 }

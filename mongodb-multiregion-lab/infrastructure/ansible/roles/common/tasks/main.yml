@@ -81,19 +81,22 @@
     path: /etc/hosts
     marker: "# {mark} ANSIBLE MANAGED - psmdb multiregion lab hosts"
     block: |
-      {% for host in groups['replicaset'] %}
-      {{ hostvars[host].private_ip }} psmdb-{{ hostvars[host].region }}
+      {% for host in groups['replicaset'] + (groups['arbiter'] | default([])) + (groups['extra_replicaset'] | default([])) %}
+      {{ hostvars[host].private_ip }} {{ hostvars[host].psmdb_alias }}
       {% endfor %}
   become: true
 
 # Purely cosmetic — MongoDB and SSH both already work correctly via
 # the /etc/hosts aliases above regardless of the OS's own hostname.
 # This just makes `hostnamectl` / the shell prompt say psmdb-london
-# instead of AWS's auto-assigned ip-10-10-1-107, for easier
-# identification when you're SSH'd into a node directly.
+# (or psmdb-paris-arbiter, etc.) instead of AWS's auto-assigned
+# ip-10-10-1-107, for easier identification when SSH'd in directly.
+# Uses the explicit psmdb_alias hostvar rather than deriving from
+# region — deriving from region alone would give the arbiter the same
+# hostname as the Paris data node, since both have region: paris.
 - name: Set the OS hostname to match the region alias
   ansible.builtin.hostname:
-    name: "psmdb-{{ region }}"
+    name: "{{ psmdb_alias }}"
   become: true
 
 - name: Raise ulimits for the mongod process

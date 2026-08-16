@@ -16,10 +16,10 @@ variable "environment" {
 variable "regions" {
   description = "Per-region network definitions for the 3 lab failure domains"
   type = map(object({
-    aws_region           = string
-    vpc_cidr             = string
-    public_subnet_cidrs  = list(string)
-    azs                  = list(string)
+    aws_region          = string
+    vpc_cidr            = string
+    public_subnet_cidrs = list(string)
+    azs                 = list(string)
   }))
 
   default = {

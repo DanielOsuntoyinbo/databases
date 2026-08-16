@@ -1,0 +1,10 @@
+---
+latency_profile:
+  - cidr: 10.10.0.0/16   # london
+    delay_ms: 30
+  - cidr: 10.20.0.0/16   # ireland
+    delay_ms: 50
+
+# Arbiter co-located here (slide 26) — not related to latency, sharing
+# this file just because it's Paris's one host_vars file.
+is_arbiter_host: true
