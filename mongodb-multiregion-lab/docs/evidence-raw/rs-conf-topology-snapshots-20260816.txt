@@ -146,9 +146,97 @@ NotWritablePrimary, repeated "cannot see a majority" refusals.
 
 ================================================================
 STAGE 3 — 5-node, arbiter added (the fix)
+Captured immediately after rs.addArb("psmdb-paris-arbiter:27017").
+version: 9, term: 30.
 ================================================================
 
-[ PENDING — to be filled in immediately after rs.addArb() is run and
-  confirmed. This placeholder exists so the file structure is ready;
-  do not consider this evidence file complete until this section is
-  filled in. ]
+{
+  _id: 'psmdb-multiregion-lab',
+  version: 9,
+  term: 30,
+  members: [
+    {
+      _id: 0,
+      host: 'psmdb-london:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 1,
+      host: 'psmdb-ireland:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 3,
+      host: 'psmdb-london-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 4,
+      host: 'psmdb-ireland-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 5,
+      host: 'psmdb-paris-arbiter:27017',
+      arbiterOnly: true,
+      buildIndexes: true,
+      hidden: false,
+      priority: 0,
+      tags: {},
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    }
+  ],
+  protocolVersion: Long('1'),
+  writeConcernMajorityJournalDefault: true,
+  settings: {
+    chainingAllowed: true,
+    heartbeatIntervalMillis: 2000,
+    heartbeatTimeoutSecs: 10,
+    electionTimeoutMillis: 10000,
+    catchUpTimeoutMillis: -1,
+    catchUpTakeoverDelayMillis: 30000,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: 1, wtimeout: 0 },
+    replicaSetId: ObjectId('6a80c7554a6dda3451912616')
+  }
+}
+
+Voting members: 5. Majority: 3. ODD — fixed. Arbiter shows a genuinely
+distinct stateStr: "ARBITER" (not PRIMARY/SECONDARY), priority: 0
+(never eligible to become primary itself), arbiterOnly: true.
+
+NOTE: the empty-tags gap flagged in Stage 2 is now resolved — London-2
+and Ireland-2 both correctly show tags: { region: '...' } in this
+snapshot, matching the original members' pattern.
+
+This is the fixed configuration — same physical topology as the
+partition demo (London pair / Ireland pair split), now with the
+arbiter's tie-breaking vote. Next: repeat the identical partition test
+(stop both Ireland nodes) against THIS config and confirm London's side
+(London + London-2 + arbiter = 3 votes) stays writable — the direct
+before/after contrast against Stage 2's failure.

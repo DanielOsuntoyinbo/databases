@@ -372,12 +372,21 @@ Not a bug, but worth knowing if a fully deterministic "always this
 specific node becomes primary" story is wanted for a slide; would need
 to break the tie (e.g. 3 vs 2.5) rather than leave them equal.
 
-### Next: the fix
+### The fix: arbiter added
 
-Arbiter not yet added to the replica set at time of writing this
-section — `rs.addArb("psmdb-paris-arbiter:27017")` is the next
-immediate step, bringing total votes to 5 (odd), fixing the exact
-failure mode just demonstrated. Evidence for that to follow.
+`rs.addArb("psmdb-paris-arbiter:27017")` — joined cleanly. `rs.status()`
+shows a genuinely distinct `ARBITER` state (not PRIMARY/SECONDARY),
+`rs.conf()` confirms `arbiterOnly: true`, `priority: 0`, `votes: 1`.
+**5 total votes, majority 3, odd — fixed.**
+
+Bonus: the empty-tags gap flagged above is now resolved — London-2 and
+Ireland-2 both correctly show `tags: { region: '...' }` in this
+snapshot. Full config: `docs/evidence-raw/rs-conf-topology-snapshots-20260816.txt` (stage 3).
+
+**Next:** repeat the identical partition test (stop both Ireland nodes)
+against this 5-vote config and confirm London's side (London +
+London-2 + arbiter = 3 votes) stays writable this time — direct
+before/after contrast against the Stage 2 failure above.
 
 ## Next up (Phase 4)
 
