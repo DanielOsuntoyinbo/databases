@@ -175,18 +175,284 @@ Same benchmark, `--op read`, London primary.
 
 ---
 
+## 5. Primary failure, election & recovery (slides 16–17, 30–32)
+
+Full raw captures live in `docs/evidence-raw/` (see that directory's
+README for the naming convention).
+
+| Time (UTC) | Event | Detail |
+|---|---|---|
+| 2026-08-16 14:43:54 | Baseline captured | London PRIMARY, Ireland pingMs=11, Paris pingMs=8. `docs/evidence-raw/rs-status-before-primary-failure-20260816.txt` |
+| 2026-08-16 14:48:23 → 14:48:39 | mongod stopped on London | Graceful `systemctl stop`, 16s shutdown duration |
+| 2026-08-16 14:48:23.953 | Election started | `"Starting an election due to step up request"` — triggered by London's own graceful-shutdown signal, not a heartbeat timeout |
+| 2026-08-16 14:48:23.975 | Election won | Paris voted yes (term 18); London unreachable (`ShutdownInProgress` — still mid-shutdown when the vote request arrived) |
+| 2026-08-16 14:48:24.003 | Ireland writable as PRIMARY | `"Transition to primary complete; database writes are now permitted"`. Full log: `docs/evidence-raw/election-log-ireland-becomes-primary-20260816.txt` |
+| 2026-08-16 14:58:38 | London restarted | `systemctl start mongod` |
+| 2026-08-16 14:58:50.383 | London reclaimed PRIMARY | Automatic priority takeover, ~12.4s after restart |
+| 2026-08-16 14:59:30 | Recovery confirmed | Both Ireland and Paris showing `replLag: 0 secs` — fully caught up |
+
+**Two distinct RTO numbers, worth presenting separately rather than
+averaged into one — they answer different questions:**
+
+- **Failover RTO (failure → new primary): ~50ms (graceful) vs ~11.1s (ungraceful).**
+  Both tested — see the ungraceful breakdown below, which reveals *why*
+  the gap is so large.
+- **Reclaim RTO (restart → priority takeover): ~12.4s.** Time for
+  London to restart, rejoin as secondary, catch up on the oplog, and
+  trigger an automatic priority-takeover election once eligible.
+
+### Ungraceful failure test (2026-08-16, ~15:13-15:14 UTC)
+
+Same scenario, hard kill instead of graceful stop —
+`systemctl kill -s SIGKILL mongod` on London while it was PRIMARY.
+
+| Time (UTC) | Event |
+|---|---|
+| 15:13:55 | `SIGKILL` sent — `systemctl status` confirms `Result: signal`, `code=killed, signal=KILL` |
+| 15:14:06.131 | Election starts — log: `"Starting an election, since we've seen no PRIMARY in election timeout period"`, `electionTimeoutPeriodMillis: 10000` |
+| 15:14:06.144 | Dry-run vote to London fails with `HostUnreachable` / `Connection refused` — genuinely unreachable, not a clean shutdown response this time |
+| 15:14:06.174 | `"Election succeeded, assuming primary role"` (term 20) |
+| 15:14:06.222 | `"Transition to primary complete; database writes are now permitted"` |
+
+**The breakdown that matters:** kill-to-election-start took **~11.1s**
+(bounded by the 10s `electionTimeoutMillis`, plus ~1s of heartbeat
+interval before the timeout timer could even start counting). But
+election-start-to-writable took only **~91ms** — nearly the same order
+of magnitude as the graceful case's ~50ms. **The election protocol itself is fast regardless of trigger; almost the entire RTO gap between
+graceful and ungraceful failure is detection time, not election time.**
+This is a more precise and more defensible claim for the talk than
+"hard failures are ~200x slower" — the real story is "the cluster is
+always fast to elect once it knows there's a problem; the variable is
+how fast it finds out."
+
+**Unclean-shutdown recovery on restart (bonus evidence for slide 30-32):**
+London's own log explicitly confirms this wasn't a clean restart:
+`"Startup from clean shutdown?": false`, and
+`"Incrementing the rollback ID after unclean shutdown"`. WiredTiger
+recovery took **215ms** (196ms log replay + 1ms rollback-to-stable +
+17ms checkpoint) — a step the graceful restart skipped entirely, since
+there was nothing to recover from. This 215ms was small only because
+the cluster was idle at the moment of the crash (1 op to replay); under
+real write load this recovery step would scale with how much unflushed
+data existed at the crash moment — another concrete instance of the
+"idle lab vs production load" caveat above, not just an assertion.
+
+**Final state confirmed:** London reclaimed PRIMARY again via automatic
+priority takeover (third time this behavior has been observed in this
+session — consistent, not a one-off). Both secondaries healthy,
+`health: 1` across all three members.
+
+**RPO: zero data loss confirmed.** Both secondaries showed
+`replLag: 0 secs` by the time recovery was checked — nothing
+acknowledged under `w:"majority"` was lost across either transition.
+
+**Caveat worth stating explicitly on the slide, not just here:** these
+specific numbers were measured on an **idle** lab cluster — no write
+load running during either transition. That matters differently for
+each part of the timing:
+
+- **The mechanism is load-independent and generalizes.** Graceful
+  shutdown triggering a near-instant handover (rather than waiting out
+  the heartbeat timeout) is a property of how MongoDB's replication
+  protocol works, not an artifact of this lab being idle. Same for the
+  priority-takeover behavior. Safe to present as a general finding.
+- **The specific durations are not production-representative and
+  should be labeled as such.** Under real write load: (1) graceful
+  shutdown itself would likely take longer than 16s — more dirty
+  WiredTiger pages to flush before a clean stop completes; (2) the
+  ~12.4s reclaim time included almost zero actual catch-up, since
+  nothing was writing while London was down — in production, London
+  would have a real oplog gap to replay first, scaling with both
+  outage duration and write rate during it; (3) the ~50ms
+  election-to-writable window is mostly CPU/network-bound rather than
+  data-volume-bound, so it likely generalizes better than the other
+  two numbers, but hasn't been tested under load to confirm.
+
+**Recommended framing for the talk:** present the mechanism as the
+finding, caveat the specific numbers as idle-cluster measurements.
+Don't imply these durations would hold in production — that's the
+kind of claim a technical audience will correctly push back on in Q&A.
+
+## 6. 2+2+1 topology: even-vote-count anti-pattern & partition demo (slides 8, 10, 19, 26)
+
+### Build
+
+Standalone arbiter instance (deliberate design choice, not co-located
+on an existing node — see rationale below): `t3.micro`, Paris region,
+hostname `psmdb-paris-arbiter` (`13.36.233.135` / `10.30.2.96`).
+
+Two new data-bearing nodes added via the same `ec2-fleet` Terraform
+module, second AZ per region for genuine within-region multi-AZ spread:
+- `psmdb-london-2` — `18.134.210.137` / `10.10.2.153`
+- `psmdb-ireland-2` — `108.129.131.192` / `10.20.2.217`
+
+**Why the arbiter is a standalone EC2 instance, not co-located:**
+initially built co-located (second `mongod` process, port 27020, on
+the existing Paris node) — this worked technically but was reconsidered
+for talk clarity. A standalone instance means `rs.conf()` shows a clean
+`psmdb-arbiter:27017` alongside the other hostnames rather than two
+processes sharing one box on different ports, which needs an extra
+sentence of explanation mid-talk. Cost difference is negligible
+(~$0.01/hr for a `t3.micro`). Also technically simpler to build: an
+arbiter is *just a regular mongod process* — there's no special
+"arbiter mode" in `mongod.conf`, arbiter status is purely a
+replica-set-config-level distinction (`rs.addArb()`). A dedicated
+instance reuses the standard `psmdb` Ansible role completely unchanged
+— no custom systemd unit, no non-standard port, none of the PID-file
+debugging the earlier co-located attempt required.
+
+`rs.add()` sequence — both joined healthy, priorities matching their
+region-mate: `psmdb-london-2` priority 3, `psmdb-ireland-2` priority 2.
+
+### The anti-pattern: even vote count
+
+`rs.remove("psmdb-paris:27017")` — Paris's original data-bearing
+member removed, leaving **4 voting data-bearing members**: London,
+London-2 (both region A), Ireland, Ireland-2 (both region B). No
+arbiter added yet at this point — deliberately sequenced to demonstrate
+the problem before the fix.
+
+```
+_id 0: psmdb-london:27017    priority 3  votes 1
+_id 1: psmdb-ireland:27017   priority 2  votes 1
+_id 3: psmdb-london-2:27017  priority 3  votes 1
+_id 4: psmdb-ireland-2:27017 priority 2  votes 1
+```
+
+**Known gap, not yet resolved:** `psmdb-london-2` and `psmdb-ireland-2`
+show `tags: {}` in `rs.conf()`, unlike the original members which carry
+`tags: { region: '...' }`. A fix was proposed (manual `rs.reconfig()`
+setting the tags) but not confirmed applied — check before relying on
+region-tagged `secondaryPreferred` reads against this topology.
+
+### Live partition demonstration
+
+Simulated a London↔Ireland network partition by stopping both Ireland
+nodes (outcome on vote math is identical to a real TGW link failure
+between the regions — London's side simply can't reach Ireland's votes
+either way).
+
+| Time (UTC) | Event |
+|---|---|
+| 18:55:03 | `psmdb-ireland` mongod stopped |
+| 18:57:06 | `psmdb-ireland-2` mongod stopped |
+| (shortly after) | London **stepped down from PRIMARY to SECONDARY** — with only 2 of 4 votes reachable (itself + London-2), can't maintain the 3-vote majority required |
+
+**Direct proof of write-unavailability** — attempted a real write from
+London while partitioned:
+```javascript
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "partition-demo", ts: new Date()})
+// MongoServerError[NotWritablePrimary]: not primary
+```
+A completely healthy 4-node cluster — every machine up and running —
+refusing every write. Not a crash, not a bug: the direct, correct
+consequence of an even vote count meeting a network split.
+
+**Repeated, explicit refusal in the logs** — over ~4 minutes
+(18:57:43 → 19:01:07), London retried an election roughly every 10-11s
+and correctly refused every single time, identical reason each time:
+```
+"Not starting an election, since we are not electable"
+reason: "Not standing for election because I cannot see a majority (mask 0x1)"
+```
+This is stronger evidence than a single log line — it shows the
+cluster's split-brain protection actively working, repeatedly, not
+just quietly giving up once. Full capture:
+`docs/evidence-raw/partition-demo-log-london-20260816.txt`
+
+### Recovery
+
+Both Ireland nodes restarted, cluster recovered cleanly: London
+SECONDARY, Ireland SECONDARY, **London-2 PRIMARY**, Ireland-2 SECONDARY.
+
+**Secondary finding worth noting:** London-2 won the post-recovery
+election, not London, despite both being configured at priority 3.
+Tied priority has no fixed tiebreaker — either can legitimately win.
+Not a bug, but worth knowing if a fully deterministic "always this
+specific node becomes primary" story is wanted for a slide; would need
+to break the tie (e.g. 3 vs 2.5) rather than leave them equal.
+
+### The fix: arbiter added
+
+`rs.addArb("psmdb-paris-arbiter:27017")` — joined cleanly. `rs.status()`
+shows a genuinely distinct `ARBITER` state (not PRIMARY/SECONDARY),
+`rs.conf()` confirms `arbiterOnly: true`, `priority: 0`, `votes: 1`.
+**5 total votes, majority 3, odd — fixed.**
+
+Bonus: the empty-tags gap flagged above is now resolved — London-2 and
+Ireland-2 both correctly show `tags: { region: '...' }` in this
+snapshot. Full config: `docs/evidence-raw/rs-conf-topology-snapshots-20260816.txt` (stage 3).
+
+**Next:** repeat the identical partition test (stop both Ireland nodes)
+against this 5-vote config and confirm London's side (London +
+London-2 + arbiter = 3 votes) stays writable this time — direct
+before/after contrast against the Stage 2 failure above.
+
+### Critical nuance found live: the arbiter fixes election, not write availability
+
+Ran the partition test again against the fixed 5-vote config — stopped
+`psmdb-ireland` and `psmdb-ireland-2` a second time. Election worked as
+predicted: `psmdb-london-2` became PRIMARY (3-of-5 votes reachable —
+London, London-2, arbiter — comfortably majority for election).
+
+**But a plain write attempt still stalled**, and investigating why
+surfaced a genuinely important distinction MongoDB draws that's easy
+to conflate: **election majority and write-concern majority are
+counted differently.**
+
+- **Election majority counts votes.** The arbiter has a vote. 3-of-5
+  reachable → election succeeds. This is what the arbiter actually
+  fixes.
+- **`w:"majority"` write-concern counts data-bearing acknowledgments
+  only.** The arbiter holds no data, so it can never acknowledge a
+  write — it doesn't count toward this number *at all*. There are 4
+  data-bearing voting members (London, Ireland, London-2, Ireland-2);
+  majority of *those* is 3. With Ireland's pair down, only 2 are
+  reachable. **Majority writes can never succeed while partitioned,
+  regardless of the arbiter.**
+
+Confirmed directly:
+
+```javascript
+// w:1 — only needs the primary's own ack. Succeeds instantly.
+db.getSiblingDB("benchmark").latency_test.insertOne(
+  {test: "post-arbiter-fix-w1", ts: new Date()},
+  {writeConcern: {w: 1}}
+)
+// { acknowledged: true, insertedId: ObjectId('6a8210e5d07e7a8504c421c1') }
+
+// w:"majority" — times out. Needs 3-of-4 data-bearing acks, only 2 reachable.
+db.getSiblingDB("benchmark").latency_test.insertOne(
+  {test: "post-arbiter-fix-wmajority", ts: new Date()},
+  {writeConcern: {w: "majority", wtimeout: 5000}}
+)
+// MongoWriteConcernError[WriteConcernFailed]: waiting for replication timed out
+// n: 1, writeConcernError: { code: 64, errmsg: 'waiting for replication timed out' }
+```
+
+**Worth being precise about `n: 1` in that error** — the write *did*
+apply locally on the primary. It's not that the write failed outright;
+it's that the write concern (the durability guarantee the client asked
+for) couldn't be satisfied in time. A client using `w:1` would never
+know anything was wrong; a client requiring `w:"majority"` correctly
+gets told its durability guarantee wasn't met.
+
+**This is the single most important nuance for slide 26**, arguably
+more valuable than the vote-count fix itself: *adding an arbiter
+restores your ability to elect a leader during a partition, but it
+does not restore full write durability* — that still requires enough
+data-bearing nodes to be reachable, arbiter or not. An audience member
+who only remembers "add an arbiter, problem solved" would be wrong in
+a way that matters in production. Found live, not planned — a better
+result than if this had been scripted in advance.
+
 ## Next up (Phase 4)
 
 - Arbiter toggle (slide 26): add/remove a non-data-bearing voter,
   observe `rs.status()` vote distribution.
-- Primary failure + election (slides 16–17): stop mongod on London,
-  capture `rs.status()` before/after, election log lines.
 - Regional outage (slide 18): stop all members in one region via
   Ansible `--limit`, capture majority-writable state with 2/3 up.
 - Same outage, different topology (slide 19): alter `rs.conf()`
   (e.g. different vote distribution), repeat the outage, compare.
 - Priority change (slide 21 continuation): flip priorities live, force
   election, capture resulting primary.
-- Recovery / RTO-RPO (slides 30–32): restore stopped members, capture
-  replication catch-up via `rs.printSecondaryReplicationInfo()` lag
-  decreasing to 0, timestamped.
