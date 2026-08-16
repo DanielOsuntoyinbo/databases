@@ -240,3 +240,78 @@ arbiter's tie-breaking vote. Next: repeat the identical partition test
 (stop both Ireland nodes) against THIS config and confirm London's side
 (London + London-2 + arbiter = 3 votes) stays writable — the direct
 before/after contrast against Stage 2's failure.
+
+================================================================
+STAGE 4 — 2+3 region-majority anti-pattern (arbiter removed, Ireland-3
+added instead)
+Captured after rs.remove("psmdb-paris-arbiter:27017") and
+rs.add({ host: "psmdb-ireland-3:27017", priority: 1, tags: { region: "ireland" } }).
+version: 12, term: 33.
+================================================================
+
+{
+  _id: 'psmdb-multiregion-lab',
+  version: 12,
+  term: 33,
+  members: [
+    {
+      _id: 0,
+      host: 'psmdb-london:27017',
+      arbiterOnly: false,
+      priority: 3,
+      tags: { region: 'london' },
+      votes: 1
+    },
+    {
+      _id: 1,
+      host: 'psmdb-ireland:27017',
+      arbiterOnly: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      votes: 1
+    },
+    {
+      _id: 3,
+      host: 'psmdb-london-2:27017',
+      arbiterOnly: false,
+      priority: 3,
+      tags: { region: 'london' },
+      votes: 1
+    },
+    {
+      _id: 4,
+      host: 'psmdb-ireland-2:27017',
+      arbiterOnly: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      votes: 1
+    },
+    {
+      _id: 5,
+      host: 'psmdb-ireland-3:27017',
+      arbiterOnly: false,
+      priority: 1,
+      tags: { region: 'ireland' },
+      votes: 1
+    }
+  ],
+  protocolVersion: Long('1'),
+  writeConcernMajorityJournalDefault: true,
+  settings: {
+    chainingAllowed: true,
+    heartbeatIntervalMillis: 2000,
+    heartbeatTimeoutSecs: 10,
+    electionTimeoutMillis: 10000,
+    catchUpTimeoutMillis: -1,
+    catchUpTakeoverDelayMillis: 30000,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: 1, wtimeout: 0 },
+    replicaSetId: ObjectId('6a80c7554a6dda3451912616')
+  }
+}
+
+Voting members: 5. Majority: 3. ODD total — but London holds only 2
+votes, Ireland holds 3 (outright majority within one region). This is
+the deliberate anti-pattern config for the region-majority demo — see
+region-majority-antipattern-log-20260816.txt for the outage test
+against this exact configuration.

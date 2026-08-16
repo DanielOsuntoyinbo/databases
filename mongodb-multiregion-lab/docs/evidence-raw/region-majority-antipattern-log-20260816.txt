@@ -1,0 +1,42 @@
+Region-majority anti-pattern demo — all 3 Ireland nodes stopped
+(psmdb-ireland, psmdb-ireland-2, psmdb-ireland-3), leaving London's
+2 votes (psmdb-london, psmdb-london-2) unable to reach the 3-vote
+majority. Captured from psmdb-london-2's mongod.log.
+
+Timeline:
+2026-08-16 20:37:51 UTC — psmdb-ireland mongod stopped
+2026-08-16 20:38:15 UTC — psmdb-ireland-2 mongod stopped
+2026-08-16 20:38:36 UTC — psmdb-ireland-3 mongod stopped
+
+rs.status() immediately after:
+psmdb-london:27017     SECONDARY               health=1
+psmdb-ireland:27017    (not reachable/healthy)  health=0
+psmdb-london-2:27017   SECONDARY               health=1
+psmdb-ireland-2:27017  (not reachable/healthy)  health=0
+psmdb-ireland-3:27017  (not reachable/healthy)  health=0
+
+Write attempt:
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "region-majority-antipattern", ts: new Date()})
+-> MongoServerError[NotWritablePrimary]: not primary
+
+Election-refusal log lines specific to this test (this log file also
+contains earlier lines from the section-6 even-vote partition test —
+these are the ones matching this test's timeline, starting shortly
+after 20:38:36):
+
+{"t":{"$date":"2026-08-16T20:39:02.757+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-11","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T20:39:13.524+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-10","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T20:39:24.528+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-10","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T20:39:35.791+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-10","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+{"t":{"$date":"2026-08-16T20:39:46.066+00:00"},"s":"I","c":"ELECTION","id":4615655,"ctx":"ReplCoord-10","msg":"Not starting an election, since we are not electable","attr":{"reason":"Not standing for election because I cannot see a majority (mask 0x1)"}}
+
+--- Analysis ---
+
+Same failure signature as the section-6 even-vote partition test
+(NotWritablePrimary, repeated correct election refusal), but a
+different root cause: total vote count here is 5 (odd), yet the
+outage of a single region (Ireland, holding 3-of-5 votes outright)
+still took the whole cluster's write availability with it. Proves
+odd total vote count is necessary but not sufficient — the real
+safety property is "no single failure domain holds a majority by
+itself," which this 2+3 topology violates despite having an odd total.

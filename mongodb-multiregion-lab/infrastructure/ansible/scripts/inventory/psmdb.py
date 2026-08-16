@@ -98,17 +98,18 @@ def build_inventory(tf_out: dict) -> dict:
     extra_nodes = {
         "london_2": "london",
         "ireland_2": "ireland",
+        "ireland_3": "ireland",
     }
     extra_hosts = {}
     for key, region in extra_nodes.items():
         pub_key, priv_key = f"{key}_public_ip", f"{key}_private_ip"
         if pub_key in tf_out and priv_key in tf_out:
-            hostname = f"psmdb-{region}-2-replicaset-1"
+            hostname = f"psmdb-{key.replace('_', '-')}-replicaset-1"
             extra_hosts[hostname] = {
                 "ansible_host": tf_out[pub_key]["value"],
                 "private_ip": tf_out[priv_key]["value"],
                 "region": region,
-                "psmdb_alias": f"psmdb-{region}-2",
+                "psmdb_alias": f"psmdb-{key.replace('_', '-')}",
             }
     if extra_hosts:
         inventory["all"]["children"]["extra_replicaset"] = {"hosts": extra_hosts}

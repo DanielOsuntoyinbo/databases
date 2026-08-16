@@ -457,6 +457,87 @@ who only remembers "add an arbiter, problem solved" would be wrong in
 a way that matters in production. Found live, not planned — a better
 result than if this had been scripted in advance.
 
+## 7. Region-majority anti-pattern: odd total votes is necessary but not sufficient (slides 8, 10, 19, 26)
+
+Direct follow-up to section 6's even-vote-count demo — same failure
+signature (`NotWritablePrimary`, repeated "cannot see a majority"
+refusals), different root cause. Point: **an odd total vote count
+alone doesn't guarantee safety if one region holds a majority by
+itself.**
+
+### Setup
+
+Removed the Paris arbiter from the replica set (`rs.remove`), stopped
+its process, added a third Ireland node instead (`psmdb-ireland-3`,
+same `ec2-fleet` Terraform pattern, priority 1, region-tagged).
+
+**Before:**
+```
+psmdb-london:27017    SECONDARY  health=1
+psmdb-ireland:27017   SECONDARY  health=1
+psmdb-london-2:27017  PRIMARY    health=1
+psmdb-ireland-2:27017 SECONDARY  health=1
+```
+(London = 2 votes, Ireland = 2 votes — pre-addition baseline)
+
+`rs.add({ host: "psmdb-ireland-3:27017", priority: 1, tags: { region: "ireland" } })`
+
+**After** — the target anti-pattern topology, `rs.conf()` version 12,
+term 33 (full config: `docs/evidence-raw/rs-conf-topology-snapshots-20260816.txt`,
+worth appending as a Stage 4 there too):
+```
+London:  psmdb-london (priority 3), psmdb-london-2 (priority 3)  = 2 votes
+Ireland: psmdb-ireland (priority 2), psmdb-ireland-2 (priority 2),
+         psmdb-ireland-3 (priority 1)                              = 3 votes
+```
+Total 5 votes, odd — passes the naive "odd is safe" rule. But Ireland
+alone now holds outright majority (3-of-5).
+
+### The demo — stop all of Ireland this time, not just half
+
+| Time (UTC) | Event |
+|---|---|
+| 20:37:51 | `psmdb-ireland` mongod stopped |
+| 20:38:15 | `psmdb-ireland-2` mongod stopped |
+| 20:38:36 | `psmdb-ireland-3` mongod stopped |
+
+`rs.status()` immediately after:
+```
+psmdb-london:27017     SECONDARY               health=1
+psmdb-ireland:27017    (not reachable/healthy)  health=0
+psmdb-london-2:27017   SECONDARY               health=1
+psmdb-ireland-2:27017  (not reachable/healthy)  health=0
+psmdb-ireland-3:27017  (not reachable/healthy)  health=0
+```
+
+Write attempt:
+```javascript
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "region-majority-antipattern", ts: new Date()})
+// MongoServerError[NotWritablePrimary]: not primary
+```
+
+Log confirms the same repeated, correct refusal pattern as section 6
+(full capture: `docs/evidence-raw/region-majority-antipattern-log-20260816.txt`):
+```
+"Not starting an election, since we are not electable"
+reason: "Not standing for election because I cannot see a majority (mask 0x1)"
+```
+Repeated every ~10-11s starting 20:39:02, continuing past 20:39:46.
+
+### The actual lesson
+
+Section 6 proved: even total vote count → a split can produce two
+groups that are both stuck. This section proves the complementary
+case: **odd total vote count is not sufficient on its own** — if any
+single failure domain holds more than half the votes, that domain's
+outage takes the whole cluster down with it, exactly like an even
+split does, just via a different mechanism. The real safety property
+isn't "is the total odd" — it's **"does any single failure domain
+hold a majority by itself."** A genuinely safe topology needs both:
+odd total, *and* no region concentrated above 50%. This 2+2+1 (with
+the arbiter, not this 2+3 variant) satisfies both; 2+3 only satisfies
+the first.
+
 ## Next up (Phase 4)
 
 - Arbiter toggle (slide 26): add/remove a non-data-bearing voter,

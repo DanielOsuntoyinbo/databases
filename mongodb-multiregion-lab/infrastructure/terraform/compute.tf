@@ -103,6 +103,29 @@ module "replicaset_ireland_2" {
   tags                 = merge(local.common_tags, { Region = "ireland", FailureDomain = "B" })
 }
 
+# --- Region-majority anti-pattern test: a third Ireland node, giving
+# Ireland an outright majority (3 of 5 total votes) by itself. Point:
+# odd total vote count alone isn't sufficient — if any single failure
+# domain holds a majority on its own, that domain's outage takes the
+# whole cluster's write availability with it, exactly like an even
+# vote count does, just via a different mechanism. Reuses subnet[0]
+# (AZ diversity isn't the point of this specific test).
+module "replicaset_ireland_3" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.ireland }
+
+  name                 = "${var.project_name}-ireland-3"
+  vpc_id               = module.network_ireland.vpc_id
+  subnet_id            = module.network_ireland.subnet_ids[0]
+  node_role            = "replicaset"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "ireland", FailureDomain = "B" })
+}
+
 # --- Arbiter: standalone instance, dedicated (slide 26) ---
 #
 # Deliberately NOT co-located on an existing node. An arbiter is just a

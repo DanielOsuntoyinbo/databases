@@ -85,3 +85,11 @@ output "ireland_2_public_ip" {
 output "ireland_2_private_ip" {
   value = module.replicaset_ireland_2.private_ips[0]
 }
+
+output "ireland_3_public_ip" {
+  value = module.replicaset_ireland_3.public_ips[0]
+}
+
+output "ireland_3_private_ip" {
+  value = module.replicaset_ireland_3.private_ips[0]
+}
