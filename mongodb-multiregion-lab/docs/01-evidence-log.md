@@ -555,6 +555,56 @@ Everything in the original Phase 4 scenario catalogue is now **done**:
   scripted moment. Worth doing only if slide 21 needs a cleaner visual
   than what already exists.
 
+## 9. Multi-AZ vs multi-region: direct latency comparison (slides 8, 10)
+
+Entirely separate replica set (`psmdb-multiaz-lab`), 3 nodes all within
+London, spread across its 3 real AWS AZs (`eu-west-2a/b/c`) — this
+required extending the VPC to a genuine third subnet, since the
+original build only provisioned 2 AZs per region by default (fixed as
+part of this addition). Independent of the main multi-region cluster;
+same admin credentials reused, no new secrets needed.
+
+`rs.conf()`:
+```
+{
+  _id: 'psmdb-multiaz-lab',
+  members: [
+    { _id: 0, host: 'psmdb-multiaz-1:27017' },  // eu-west-2a
+    { _id: 1, host: 'psmdb-multiaz-2:27017' },  // eu-west-2b
+    { _id: 2, host: 'psmdb-multiaz-3:27017' }   // eu-west-2c
+  ]
+}
+```
+
+**Measured cross-AZ latency** (`rs.status().members[].pingMs`):
+
+| Link | pingMs |
+|---|---|
+| multiaz-1 → multiaz-2 | 0 (sub-millisecond) |
+| multiaz-1 → multiaz-3 | 0 (sub-millisecond) |
+
+**Direct comparison against the multi-region baseline** (section 2):
+
+| Topology | Measured latency |
+|---|---|
+| Multi-region (London↔Ireland↔Paris) | 7–11ms |
+| Multi-AZ (single region, 3 AZs) | <1ms |
+
+Roughly a **10-20x difference** — real, measured evidence for exactly
+the "order of magnitude" estimate discussed early in this build,
+now backed by numbers instead of general AWS-published figures. This
+is the concrete trade-off slide 8/10 makes: multi-AZ protects against
+rack/power/network failure within a region at near-zero latency cost;
+multi-region protects against a whole-region outage, at a real,
+measurable latency cost.
+
+**Not yet done:** the same write-concern (`w:1` vs `w:"majority"`)
+benchmark from section 3, run against this topology instead. Would
+give a second, directly comparable data point — multi-AZ majority-write
+cost should be dramatically lower than the ~18ms multi-region floor,
+proportional to the latency difference above. Worth running before
+considering this section complete.
+
 ## Next up (Phase 5)
 
 - Config server replica set (CSRS), 3 members, 1 per region — same
