@@ -400,6 +400,17 @@ surfaced a genuinely important distinction MongoDB draws that's easy
 to conflate: **election majority and write-concern majority are
 counted differently.**
 
+`rs.status()` during the partition, showing exactly which nodes were
+unreachable at the moment of the write attempt:
+
+```
+psmdb-london:27017         SECONDARY            health=1
+psmdb-ireland:27017         (not reachable/healthy)  health=0
+psmdb-london-2:27017       PRIMARY              health=1
+psmdb-ireland-2:27017       (not reachable/healthy)  health=0
+psmdb-paris-arbiter:27017  ARBITER              health=1
+```
+
 - **Election majority counts votes.** The arbiter has a vote. 3-of-5
   reachable → election succeeds. This is what the arbiter actually
   fixes.
