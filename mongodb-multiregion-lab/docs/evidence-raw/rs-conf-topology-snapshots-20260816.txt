@@ -1,0 +1,154 @@
+rs.conf() captured at each major topology stage, in order. Purpose:
+a clean before/after record of the cluster's actual configuration as
+it evolved through this build — independent of the narrative text in
+01-evidence-log.md, this is the raw source.
+
+================================================================
+STAGE 1 — Original 3-node, hostname-based (post rs.reconfig from IPs)
+Captured after the London/Ireland/Paris -> hostname reconfig, before
+any 2+2+1 changes. version: 2.
+================================================================
+
+{
+  _id: 'psmdb-multiregion-lab',
+  version: 2,
+  term: 14,
+  members: [
+    {
+      _id: 0,
+      host: 'psmdb-london:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 1,
+      host: 'psmdb-ireland:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 2,
+      host: 'psmdb-paris:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 1,
+      tags: { region: 'paris' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    }
+  ],
+  protocolVersion: Long('1'),
+  writeConcernMajorityJournalDefault: true,
+  settings: {
+    chainingAllowed: true,
+    heartbeatIntervalMillis: 2000,
+    heartbeatTimeoutSecs: 10,
+    electionTimeoutMillis: 10000,
+    catchUpTimeoutMillis: -1,
+    catchUpTakeoverDelayMillis: 30000,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: 1, wtimeout: 0 },
+    replicaSetId: ObjectId('6a80c7554a6dda3451912616')
+  }
+}
+
+Voting members: 3. Majority: 2. Odd — healthy baseline topology.
+
+================================================================
+STAGE 2 — 4-node anti-pattern (after rs.add x2, then rs.remove Paris)
+Captured immediately after removing psmdb-paris:27017's data-bearing
+member, before the arbiter was added. version: 7, term: 29.
+================================================================
+
+{
+  _id: 'psmdb-multiregion-lab',
+  version: 7,
+  term: 29,
+  members: [
+    {
+      _id: 0,
+      host: 'psmdb-london:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 1,
+      host: 'psmdb-ireland:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 3,
+      host: 'psmdb-london-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: {},
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 4,
+      host: 'psmdb-ireland-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: {},
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    }
+  ],
+  protocolVersion: Long('1'),
+  writeConcernMajorityJournalDefault: true,
+  settings: {
+    chainingAllowed: true,
+    heartbeatIntervalMillis: 2000,
+    heartbeatTimeoutSecs: 10,
+    electionTimeoutMillis: 10000,
+    catchUpTimeoutMillis: -1,
+    catchUpTakeoverDelayMillis: 30000,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: 1, wtimeout: 0 },
+    replicaSetId: ObjectId('6a80c7554a6dda3451912616')
+  }
+}
+
+Voting members: 4. Majority: 3. EVEN — the anti-pattern. NOTE: London-2
+and Ireland-2 show tags: {} (empty), unlike the original members —
+known gap, not yet fixed as of this snapshot.
+
+This is the exact configuration active during the partition demo
+(see partition-demo-log-london-20260816.txt) — London stepping down,
+NotWritablePrimary, repeated "cannot see a majority" refusals.
+
+================================================================
+STAGE 3 — 5-node, arbiter added (the fix)
+================================================================
+
+[ PENDING — to be filled in immediately after rs.addArb() is run and
+  confirmed. This placeholder exists so the file structure is ready;
+  do not consider this evidence file complete until this section is
+  filled in. ]
