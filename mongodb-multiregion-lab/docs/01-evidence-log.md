@@ -12,8 +12,9 @@ scenario is run — this is the source for slide evidence, not memory.
 |---|---|---|
 | 1 — Network (3 VPCs, 3 TGWs, peering mesh) | ✅ Done, validated | infra only |
 | 2 — Unsharded replica set (region tags, priority) | ✅ Done, PRIMARY=London confirmed | 13–21 |
-| 3 — Write concern + read preference benchmarks | ✅ Done (this doc) | 22–25 |
-| 4 — Arbiter, primary failure, regional outage, recovery | ⬜ Not started | 16–19, 26, 30–32 |
+| 3 — Write concern + read preference benchmarks | ✅ Done | 22–25 |
+| 4 — Arbiter, primary failure, regional outage, recovery | ✅ Done — graceful/ungraceful failover, even-vote & region-majority anti-patterns, arbiter fix, write-concern-vs-election-majority nuance | 16–19, 26, 30–32 |
+| 4b — Multi-AZ comparison topology (bonus, not originally scoped) | ✅ Done — write concern + read preference benchmarks, direct latency decomposition vs multi-region | 8, 10 |
 | 5 — Sharded cluster (CSRS + shard(s) + mongos) | ⬜ Not started | 34–37 |
 | 6 — Full evidence pass + rehearsal | ⬜ Not started | — |
 
