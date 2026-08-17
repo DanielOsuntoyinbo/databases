@@ -37,3 +37,8 @@ security:
   authorization: enabled
   keyFile: {{ psmdb_keyfile_path }}
 {% endif %}
+
+{% if psmdb_cluster_role is defined %}
+sharding:
+  clusterRole: {{ psmdb_cluster_role }}
+{% endif %}

@@ -41,3 +41,9 @@ latency-clear: inventory
 
 benchmark-tools: inventory
 	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/benchmark-tools.yml --ask-vault-pass
+
+deploy-multiaz: inventory
+	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/multiaz.yml --ask-vault-pass
+
+deploy-sharding: inventory
+	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/sharding.yml --ask-vault-pass

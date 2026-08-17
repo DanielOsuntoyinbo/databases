@@ -1,0 +1,75 @@
+---
+- name: Wait for mongod to accept connections
+  ansible.builtin.wait_for:
+    host: "{{ private_ip }}"
+    port: "{{ psmdb_port }}"
+    timeout: 60
+
+- name: Check whether shard1 is already bootstrapped
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }}
+    -u {{ psmdb_admin_user }} -p {{ psmdb_admin_password }} --authenticationDatabase admin
+    --eval "rs.status().ok"
+  register: shard1_bootstrap_check
+  changed_when: false
+  failed_when: false
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  no_log: true
+
+- name: Render rs.initiate() script
+  ansible.builtin.template:
+    src: rs_initiate_shard1.js.j2
+    dest: /tmp/rs_initiate_shard1.js
+    mode: "0600"
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  when: shard1_bootstrap_check.rc != 0 or '1' not in shard1_bootstrap_check.stdout
+
+- name: Run rs.initiate() (fresh shard1 only)
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }} --file /tmp/rs_initiate_shard1.js
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  when: shard1_bootstrap_check.rc != 0 or '1' not in shard1_bootstrap_check.stdout
+
+- name: Wait for a PRIMARY to be elected
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    "rs.status().members.some(m => m.stateStr === 'PRIMARY')"
+  register: shard1_primary_check
+  until: "'true' in shard1_primary_check.stdout"
+  retries: 12
+  delay: 5
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  changed_when: false
+  when: shard1_bootstrap_check.rc != 0 or '1' not in shard1_bootstrap_check.stdout
+
+- name: Create the admin user (fresh shard1 only, reuses main cluster's credentials)
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    'db.getSiblingDB("admin").createUser({user: "{{ psmdb_admin_user }}",
+    pwd: "{{ psmdb_admin_password }}", roles: [{role: "root", db: "admin"}]})'
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  register: shard1_create_admin
+  failed_when: shard1_create_admin.rc != 0 and 'already exists' not in shard1_create_admin.stderr
+  changed_when: "'already exists' not in shard1_create_admin.stderr"
+  no_log: true
+
+- name: Print shard1 member states
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }}
+    -u {{ psmdb_admin_user }} -p {{ psmdb_admin_password }} --authenticationDatabase admin
+    --eval "JSON.stringify(rs.status().members.map(m => ({name: m.name, state: m.stateStr})))"
+  run_once: true
+  delegate_to: "{{ groups['shard1'][0] }}"
+  register: shard1_final_status
+  changed_when: false
+  no_log: true
+
+- name: Report shard1 states
+  ansible.builtin.debug:
+    var: shard1_final_status.stdout
+  run_once: true

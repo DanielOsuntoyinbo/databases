@@ -1,0 +1,20 @@
+---
+- name: Initiate the config server replica set (CSRS)
+  hosts: configsvr
+  become: true
+  roles:
+    - csrs_bootstrap
+
+- name: Initiate shard1 replica set
+  hosts: shard1
+  become: true
+  roles:
+    - shard1_bootstrap
+
+# Must run after CSRS is bootstrapped — mongos connects to the config
+# servers on startup and will fail if they're not ready.
+- name: Deploy and start mongos routers
+  hosts: mongos
+  become: true
+  roles:
+    - mongos_router

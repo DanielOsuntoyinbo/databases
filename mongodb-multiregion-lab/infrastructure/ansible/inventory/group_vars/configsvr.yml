@@ -1,0 +1,3 @@
+---
+psmdb_replset_name: "psmdb-csrs"
+psmdb_cluster_role: "configsvr"

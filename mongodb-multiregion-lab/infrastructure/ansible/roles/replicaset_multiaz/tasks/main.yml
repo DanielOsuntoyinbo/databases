@@ -1,0 +1,81 @@
+---
+# Same bootstrap-check pattern as the roles/replicaset role, targeting
+# the separate multiaz group/replica set instead. See that role's
+# comments for why the check itself must be authenticated (idempotency
+# fix from earlier in the build — an unauthenticated check only works
+# before any user exists, which stops being true after first bootstrap).
+
+- name: Wait for mongod to accept connections
+  ansible.builtin.wait_for:
+    host: "{{ private_ip }}"
+    port: "{{ psmdb_port }}"
+    timeout: 60
+
+- name: Check whether the multiaz cluster is already bootstrapped
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }}
+    -u {{ psmdb_admin_user }} -p {{ psmdb_admin_password }} --authenticationDatabase admin
+    --eval "rs.status().ok"
+  register: multiaz_bootstrap_check
+  changed_when: false
+  failed_when: false
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  no_log: true
+
+- name: Render rs.initiate() script
+  ansible.builtin.template:
+    src: rs_initiate_multiaz.js.j2
+    dest: /tmp/rs_initiate_multiaz.js
+    mode: "0600"
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  when: multiaz_bootstrap_check.rc != 0 or '1' not in multiaz_bootstrap_check.stdout
+
+- name: Run rs.initiate() (fresh cluster only)
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }} --file /tmp/rs_initiate_multiaz.js
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  when: multiaz_bootstrap_check.rc != 0 or '1' not in multiaz_bootstrap_check.stdout
+
+- name: Wait for a PRIMARY to be elected
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    "rs.status().members.some(m => m.stateStr === 'PRIMARY')"
+  register: multiaz_primary_check
+  until: "'true' in multiaz_primary_check.stdout"
+  retries: 12
+  delay: 5
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  changed_when: false
+  when: multiaz_bootstrap_check.rc != 0 or '1' not in multiaz_bootstrap_check.stdout
+
+- name: Create the admin user (fresh cluster only, reuses main cluster's credentials)
+  ansible.builtin.shell: >
+    mongosh --quiet --port {{ psmdb_port }} --eval
+    'db.getSiblingDB("admin").createUser({user: "{{ psmdb_admin_user }}",
+    pwd: "{{ psmdb_admin_password }}", roles: [{role: "root", db: "admin"}]})'
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  register: multiaz_create_admin
+  failed_when: multiaz_create_admin.rc != 0 and 'already exists' not in multiaz_create_admin.stderr
+  changed_when: "'already exists' not in multiaz_create_admin.stderr"
+  no_log: true
+
+- name: Report final rs.status() for verification
+  ansible.builtin.command: >
+    mongosh --quiet --port {{ psmdb_port }}
+    -u {{ psmdb_admin_user }} -p {{ psmdb_admin_password }} --authenticationDatabase admin
+    --eval "JSON.stringify(rs.status().members.map(m => ({name: m.name, state: m.stateStr})))"
+  run_once: true
+  delegate_to: "{{ groups['multiaz'][0] }}"
+  register: multiaz_final_status
+  changed_when: false
+  no_log: true
+
+- name: Print multiaz member states
+  ansible.builtin.debug:
+    var: multiaz_final_status.stdout
+  run_once: true

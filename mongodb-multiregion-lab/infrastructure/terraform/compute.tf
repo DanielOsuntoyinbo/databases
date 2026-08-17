@@ -153,3 +153,210 @@ module "arbiter_paris" {
   mongod_ingress_cidrs = local.all_vpc_cidrs
   tags                 = merge(local.common_tags, { Region = "paris", FailureDomain = "C", Role = "arbiter" })
 }
+
+# --- Multi-AZ comparison topology: 3 nodes, all within London, spread
+# across its 2 AZs. Entirely separate replica set (psmdb-multiaz-lab),
+# independent of the main multi-region cluster. Purpose: same
+# write-concern/latency benchmark methodology as Phase 3, run against
+# this topology instead — real measured cross-AZ latency (<2ms
+# expected) vs the already-measured cross-region latency (9-11ms),
+# side by side. Local VPC CIDR only for ingress — no cross-region
+# traffic needed for a single-region topology.
+
+module "multiaz_1" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-multiaz-1"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[0]
+  node_role            = "multiaz"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = [var.regions["london"].vpc_cidr]
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "multiaz" })
+}
+
+module "multiaz_2" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-multiaz-2"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[1]
+  node_role            = "multiaz"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = [var.regions["london"].vpc_cidr]
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "multiaz" })
+}
+
+module "multiaz_3" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-multiaz-3"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[2]
+  node_role            = "multiaz"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = [var.regions["london"].vpc_cidr]
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "multiaz" })
+}
+
+# --- Phase 5: sharded cluster (slides 34-37) ---
+# Trimmed scope per the original build plan: CSRS + 1 shard, both
+# spread 1-per-region for the same resilience story as the main
+# replica set. mongos routers are a different binary (not mongod) —
+# smaller instance type since they're stateless.
+
+module "configsvr_london" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-configsvr-london"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[0]
+  node_role            = "configsvr"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "configsvr" })
+}
+
+module "configsvr_ireland" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.ireland }
+
+  name                 = "${var.project_name}-configsvr-ireland"
+  vpc_id               = module.network_ireland.vpc_id
+  subnet_id            = module.network_ireland.subnet_ids[0]
+  node_role            = "configsvr"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "ireland", FailureDomain = "B", Role = "configsvr" })
+}
+
+module "configsvr_paris" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.paris }
+
+  name                 = "${var.project_name}-configsvr-paris"
+  vpc_id               = module.network_paris.vpc_id
+  subnet_id            = module.network_paris.subnet_ids[0]
+  node_role            = "configsvr"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "paris", FailureDomain = "C", Role = "configsvr" })
+}
+
+module "shard1_london" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-shard1-london"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[1]
+  node_role            = "shard1"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "shard1" })
+}
+
+module "shard1_ireland" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.ireland }
+
+  name                 = "${var.project_name}-shard1-ireland"
+  vpc_id               = module.network_ireland.vpc_id
+  subnet_id            = module.network_ireland.subnet_ids[1]
+  node_role            = "shard1"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "ireland", FailureDomain = "B", Role = "shard1" })
+}
+
+module "shard1_paris" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.paris }
+
+  name                 = "${var.project_name}-shard1-paris"
+  vpc_id               = module.network_paris.vpc_id
+  subnet_id            = module.network_paris.subnet_ids[1]
+  node_role            = "shard1"
+  node_count           = 1
+  instance_type        = var.replicaset_instance_type
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "paris", FailureDomain = "C", Role = "shard1" })
+}
+
+module "mongos_london" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.london }
+
+  name                 = "${var.project_name}-mongos-london"
+  vpc_id               = module.network_london.vpc_id
+  subnet_id            = module.network_london.subnet_ids[0]
+  node_role            = "mongos"
+  node_count           = 1
+  instance_type        = "t3.small"
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "london", FailureDomain = "A", Role = "mongos" })
+}
+
+module "mongos_ireland" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.ireland }
+
+  name                 = "${var.project_name}-mongos-ireland"
+  vpc_id               = module.network_ireland.vpc_id
+  subnet_id            = module.network_ireland.subnet_ids[0]
+  node_role            = "mongos"
+  node_count           = 1
+  instance_type        = "t3.small"
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "ireland", FailureDomain = "B", Role = "mongos" })
+}
+
+module "mongos_paris" {
+  source    = "./modules/ec2-fleet"
+  providers = { aws = aws.paris }
+
+  name                 = "${var.project_name}-mongos-paris"
+  vpc_id               = module.network_paris.vpc_id
+  subnet_id            = module.network_paris.subnet_ids[0]
+  node_role            = "mongos"
+  node_count           = 1
+  instance_type        = "t3.small"
+  ssh_public_key       = local.ssh_public_key
+  admin_ssh_cidr       = var.admin_ssh_cidr
+  mongod_ingress_cidrs = local.all_vpc_cidrs
+  tags                 = merge(local.common_tags, { Region = "paris", FailureDomain = "C", Role = "mongos" })
+}

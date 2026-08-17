@@ -81,7 +81,7 @@
     path: /etc/hosts
     marker: "# {mark} ANSIBLE MANAGED - psmdb multiregion lab hosts"
     block: |
-      {% for host in groups['replicaset'] + (groups['arbiter'] | default([])) + (groups['extra_replicaset'] | default([])) %}
+      {% for host in groups['replicaset'] + (groups['arbiter'] | default([])) + (groups['extra_replicaset'] | default([])) + (groups['multiaz'] | default([])) + (groups['configsvr'] | default([])) + (groups['shard1'] | default([])) + (groups['mongos'] | default([])) %}
       {{ hostvars[host].private_ip }} {{ hostvars[host].psmdb_alias }}
       {% endfor %}
   become: true

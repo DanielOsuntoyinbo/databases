@@ -93,3 +93,67 @@ output "ireland_3_public_ip" {
 output "ireland_3_private_ip" {
   value = module.replicaset_ireland_3.private_ips[0]
 }
+
+output "multiaz_public_ips" {
+  value = {
+    multiaz_1 = module.multiaz_1.public_ips[0]
+    multiaz_2 = module.multiaz_2.public_ips[0]
+    multiaz_3 = module.multiaz_3.public_ips[0]
+  }
+}
+
+output "multiaz_private_ips" {
+  value = {
+    multiaz_1 = module.multiaz_1.private_ips[0]
+    multiaz_2 = module.multiaz_2.private_ips[0]
+    multiaz_3 = module.multiaz_3.private_ips[0]
+  }
+}
+
+output "configsvr_public_ips" {
+  value = {
+    london  = module.configsvr_london.public_ips[0]
+    ireland = module.configsvr_ireland.public_ips[0]
+    paris   = module.configsvr_paris.public_ips[0]
+  }
+}
+
+output "configsvr_private_ips" {
+  value = {
+    london  = module.configsvr_london.private_ips[0]
+    ireland = module.configsvr_ireland.private_ips[0]
+    paris   = module.configsvr_paris.private_ips[0]
+  }
+}
+
+output "shard1_public_ips" {
+  value = {
+    london  = module.shard1_london.public_ips[0]
+    ireland = module.shard1_ireland.public_ips[0]
+    paris   = module.shard1_paris.public_ips[0]
+  }
+}
+
+output "shard1_private_ips" {
+  value = {
+    london  = module.shard1_london.private_ips[0]
+    ireland = module.shard1_ireland.private_ips[0]
+    paris   = module.shard1_paris.private_ips[0]
+  }
+}
+
+output "mongos_public_ips" {
+  value = {
+    london  = module.mongos_london.public_ips[0]
+    ireland = module.mongos_ireland.public_ips[0]
+    paris   = module.mongos_paris.public_ips[0]
+  }
+}
+
+output "mongos_private_ips" {
+  value = {
+    london  = module.mongos_london.private_ips[0]
+    ireland = module.mongos_ireland.private_ips[0]
+    paris   = module.mongos_paris.private_ips[0]
+  }
+}

@@ -1,0 +1,24 @@
+# Managed by Ansible — infrastructure/ansible/roles/mongos_router/templates/mongos.conf.j2
+# mongos router on {{ inventory_hostname }} (region: {{ region }})
+# Not mongod — a separate binary/service entirely, routes to the
+# sharded cluster via the config server replica set below.
+
+systemLog:
+  destination: file
+  path: /var/log/mongodb/mongos.log
+  logAppend: true
+
+net:
+  port: {{ psmdb_port }}
+  bindIp: 0.0.0.0
+
+processManagement:
+  fork: true
+  pidFilePath: /run/mongos.pid
+
+sharding:
+  configDB: {{ hostvars[groups['configsvr'][0]].psmdb_replset_name }}/{% for host in groups['configsvr'] %}{{ hostvars[host].psmdb_alias }}:{{ psmdb_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+
+security:
+  keyFile: {{ psmdb_keyfile_path }}

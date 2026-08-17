@@ -1,0 +1,17 @@
+// Rendered by Ansible from infrastructure/ansible/roles/csrs_bootstrap/templates/rs_initiate_csrs.js.j2
+// Config servers must run as a replica set even at this small scale —
+// this is a MongoDB requirement, not a lab choice. No priority
+// preference needed among config servers.
+rs.initiate({
+  _id: "{{ psmdb_replset_name }}",
+  configsvr: true,
+  members: [
+{% for host in groups['configsvr'] %}
+    {
+      _id: {{ loop.index0 }},
+      host: "{{ hostvars[host].private_ip }}:{{ psmdb_port }}"
+    }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ]
+})

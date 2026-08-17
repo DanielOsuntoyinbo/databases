@@ -1,0 +1,5 @@
+---
+- name: Restart mongos
+  ansible.builtin.systemd:
+    name: mongos
+    state: restarted

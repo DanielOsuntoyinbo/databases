@@ -114,6 +114,51 @@ def build_inventory(tf_out: dict) -> dict:
     if extra_hosts:
         inventory["all"]["children"]["extra_replicaset"] = {"hosts": extra_hosts}
 
+    # Multi-AZ comparison topology — entirely separate replica set,
+    # 3 nodes all in London. Own group, own group_vars override
+    # (psmdb_replset_name), own bootstrap play.
+    if "multiaz_public_ips" in tf_out and "multiaz_private_ips" in tf_out:
+        pub_ips = tf_out["multiaz_public_ips"]["value"]
+        priv_ips = tf_out["multiaz_private_ips"]["value"]
+        multiaz_hosts = {}
+        for key in ("multiaz_1", "multiaz_2", "multiaz_3"):
+            if key in pub_ips and key in priv_ips:
+                alias = key.replace("_", "-")
+                hostname = f"psmdb-{alias}-1"
+                multiaz_hosts[hostname] = {
+                    "ansible_host": pub_ips[key],
+                    "private_ip": priv_ips[key],
+                    "region": "london",
+                    "psmdb_alias": f"psmdb-{alias}",
+                }
+        if multiaz_hosts:
+            inventory["all"]["children"]["multiaz"] = {"hosts": multiaz_hosts}
+
+    # Sharded cluster: CSRS, shard1, mongos — each a region-tagged
+    # trio, matching the main replica set's failure-domain pattern.
+    sharding_groups = {
+        "configsvr": "configsvr_public_ips",
+        "shard1": "shard1_public_ips",
+        "mongos": "mongos_public_ips",
+    }
+    for group_name, pub_key in sharding_groups.items():
+        priv_key = pub_key.replace("public", "private")
+        if pub_key in tf_out and priv_key in tf_out:
+            pub_ips = tf_out[pub_key]["value"]
+            priv_ips = tf_out[priv_key]["value"]
+            group_hosts = {}
+            for region in ("london", "ireland", "paris"):
+                if region in pub_ips and region in priv_ips:
+                    hostname = f"psmdb-{group_name}-{region}-1"
+                    group_hosts[hostname] = {
+                        "ansible_host": pub_ips[region],
+                        "private_ip": priv_ips[region],
+                        "region": region,
+                        "psmdb_alias": f"psmdb-{group_name}-{region}",
+                    }
+            if group_hosts:
+                inventory["all"]["children"][group_name] = {"hosts": group_hosts}
+
     return inventory
 
 

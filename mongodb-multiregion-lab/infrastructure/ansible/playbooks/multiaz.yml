@@ -1,0 +1,6 @@
+---
+- name: Initiate the multi-AZ comparison replica set
+  hosts: multiaz
+  become: true
+  roles:
+    - replicaset_multiaz

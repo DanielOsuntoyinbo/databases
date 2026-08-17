@@ -1,0 +1,15 @@
+// Rendered by Ansible from infrastructure/ansible/roles/replicaset_multiaz/templates/rs_initiate_multiaz.js.j2
+// All 3 members are peers within the same region — no priority
+// preference needed, unlike the main multi-region cluster.
+rs.initiate({
+  _id: "{{ psmdb_replset_name }}",
+  members: [
+{% for host in groups['multiaz'] %}
+    {
+      _id: {{ loop.index0 }},
+      host: "{{ hostvars[host].private_ip }}:{{ psmdb_port }}"
+    }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ]
+})

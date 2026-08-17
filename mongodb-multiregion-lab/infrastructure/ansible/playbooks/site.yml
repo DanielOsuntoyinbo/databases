@@ -1,9 +1,16 @@
 ---
-- name: Provision OS + PSMDB on all replica set nodes
-  hosts: replicaset:arbiter:extra_replicaset
+- name: Provision OS on all nodes (including mongos routers)
+  hosts: replicaset:arbiter:extra_replicaset:multiaz:configsvr:shard1:mongos
   become: true
   roles:
     - common
+
+# mongos deliberately excluded — it's a different binary entirely,
+# not mongod, with its own role (mongos_router) and its own playbook.
+- name: Install and configure mongod on all mongod-based nodes
+  hosts: replicaset:arbiter:extra_replicaset:multiaz:configsvr:shard1
+  become: true
+  roles:
     - psmdb
 
 - name: Initiate the replica set and create the admin user

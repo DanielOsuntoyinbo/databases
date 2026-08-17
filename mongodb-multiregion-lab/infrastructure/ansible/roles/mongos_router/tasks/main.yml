@@ -1,0 +1,109 @@
+---
+# Self-contained package install rather than depending on the psmdb
+# role — mongos hosts still need percona-server-mongodb-server
+# installed (it's what creates the mongod system user our systemd
+# unit runs as) plus the mongos and shell packages, even though this
+# host will never actually run a mongod service. Keeping this role
+# independent avoids an uncertain dependency on exact Debian
+# package-splitting behavior between the server/mongos packages.
+
+- name: Wait for any other process to release the dpkg lock
+  ansible.builtin.shell: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+  changed_when: false
+
+- name: Download percona-release package
+  ansible.builtin.get_url:
+    url: https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+    dest: /tmp/percona-release_latest.generic_all.deb
+    mode: "0644"
+
+- name: Install percona-release
+  ansible.builtin.apt:
+    deb: /tmp/percona-release_latest.generic_all.deb
+    state: present
+
+- name: Enable the PSMDB 7.0 repository
+  ansible.builtin.command: percona-release setup psmdb-70
+  args:
+    creates: /etc/apt/sources.list.d/percona-psmdb-70-release.list
+
+- name: Update apt cache after adding Percona repo
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install Percona Server for MongoDB packages
+  ansible.builtin.apt:
+    name:
+      - "percona-server-mongodb-server={{ psmdb_version }}*"
+      - "percona-server-mongodb-mongos={{ psmdb_version }}*"
+      - "percona-server-mongodb-shell={{ psmdb_version }}*"
+    state: present
+    allow_downgrade: true
+
+# The server package's postinst starts a standalone mongod on install
+# — not wanted here, this host only ever runs mongos.
+- name: Ensure the standalone mongod service is stopped and disabled
+  ansible.builtin.systemd:
+    name: mongod
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Write the shared cluster keyfile
+  ansible.builtin.copy:
+    dest: "{{ psmdb_keyfile_path }}"
+    content: "{{ psmdb_keyfile_content }}"
+    owner: mongod
+    group: mongod
+    mode: "0400"
+  no_log: true
+
+- name: Deploy mongos.conf
+  ansible.builtin.template:
+    src: mongos.conf.j2
+    dest: /etc/mongos.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mongos
+
+# Custom unit, not the package's own — mongos isn't started by the
+# packaged mongod.service at all. Same PermissionsStartOnly +
+# ExecStartPre pattern as the arbiter unit, learned from the earlier
+# PID-file permission bug: an unprivileged User=mongod process can't
+# create a brand-new file directly in /run on its own.
+- name: Deploy mongos systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/mongos.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=PSMDB mongos router
+      After=network.target
+
+      [Service]
+      Type=forking
+      User=mongod
+      Group=mongod
+      PermissionsStartOnly=true
+      ExecStartPre=/bin/bash -c 'touch /run/mongos.pid && chown mongod:mongod /run/mongos.pid'
+      ExecStart=/usr/bin/mongos --config /etc/mongos.conf
+      PIDFile=/run/mongos.pid
+      LimitNOFILE=64000
+      LimitNPROC=64000
+
+      [Install]
+      WantedBy=multi-user.target
+  register: mongos_unit
+
+- name: Reload systemd if the mongos unit changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: mongos_unit.changed
+
+- name: Ensure mongos is enabled and started
+  ansible.builtin.systemd:
+    name: mongos
+    enabled: true
+    state: started

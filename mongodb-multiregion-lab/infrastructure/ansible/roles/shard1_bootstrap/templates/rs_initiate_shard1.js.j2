@@ -1,0 +1,14 @@
+// Rendered by Ansible from infrastructure/ansible/roles/shard1_bootstrap/templates/rs_initiate_shard1.js.j2
+rs.initiate({
+  _id: "{{ psmdb_replset_name }}",
+  members: [
+{% for host in groups['shard1'] %}
+    {
+      _id: {{ loop.index0 }},
+      host: "{{ hostvars[host].private_ip }}:{{ psmdb_port }}",
+      tags: { region: "{{ hostvars[host].region }}" }
+    }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ]
+})
