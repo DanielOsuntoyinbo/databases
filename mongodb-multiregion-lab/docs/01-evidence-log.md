@@ -654,6 +654,60 @@ multi-region numbers:**
    because only it waits on replication. Clean, well-evidenced
    distinction for the talk.
 
+**Read preference comparison, same topology:**
+
+### primary
+
+| concurrency | ops/sec | p50 ms | p95 ms | p99 ms |
+|---|---|---|---|---|
+| 10 | 2425.3 | 3.31 | 9.66 | 13.75 |
+| 25 | 2046.8 | 8.86 | 29.81 | 60.12 |
+| 50 | 2103.6 | 16.98 | 61.73 | 93.33 |
+| 100 | 1676.0 | 30.81 | 188.14 | 320.06 |
+
+### primaryPreferred
+
+| concurrency | ops/sec | p50 ms | p95 ms | p99 ms |
+|---|---|---|---|---|
+| 10 | 2367.2 | 3.4 | 9.79 | 14.38 |
+| 25 | 2065.3 | 9.04 | 29.98 | 51.48 |
+| 50 | 2093.8 | 17.09 | 60.82 | 92.59 |
+| 100 | 1619.4 | 31.44 | 197.29 | 331.73 |
+
+### secondaryPreferred
+
+| concurrency | ops/sec | p50 ms | p95 ms | p99 ms |
+|---|---|---|---|---|
+| 10 | 3161.4 | 2.58 | 6.69 | 9.68 |
+| 25 | 2961.2 | 6.23 | 20.76 | 30.96 |
+| 50 | 2122.3 | 15.39 | 59.66 | 170.94 |
+| 100 | 2265.3 | 25.78 | 130.92 | 220.8 |
+
+**Two more findings, both confirming patterns already seen elsewhere
+in this build:**
+
+4. **`primary` reads are topology-independent, matching the `w:1`
+   finding for writes.** Multi-AZ `primary` p50s (3.31–30.81ms across
+   the ramp) track closely with multi-region's (2.88–27.14ms, section 4)
+   — small differences are ordinary instance-level variance, not a
+   topology effect. Makes sense: a `primary` read never leaves the
+   primary node, so cross-AZ vs cross-region distance simply doesn't
+   enter into it.
+
+5. **`secondaryPreferred` shows the same latency-decomposition pattern
+   as the write-concern test.** At concurrency 10, multi-AZ's
+   `secondaryPreferred` p50 is **2.58ms** vs multi-region's **9.83ms**
+   (section 4) — the gap tracks the measured cross-region RTT almost
+   exactly, same as finding #1 above for majority writes. Also: within
+   this topology, `secondaryPreferred` (2.58ms) actually **beats**
+   `primary` (3.31ms) at the same concurrency — the same
+   CPU-contention effect first observed in section 4 (client benchmark
+   and the node it's reading from share the same 2 vCPUs; offloading
+   to a different node than the primary relieves that contention).
+   That this effect shows up again, in a second topology, is good
+   evidence it's a real, general finding — not a one-off artifact of
+   the original test setup.
+
 ## Next up (Phase 5)
 
 - Config server replica set (CSRS), 3 members, 1 per region — same
