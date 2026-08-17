@@ -598,12 +598,61 @@ rack/power/network failure within a region at near-zero latency cost;
 multi-region protects against a whole-region outage, at a real,
 measurable latency cost.
 
-**Not yet done:** the same write-concern (`w:1` vs `w:"majority"`)
-benchmark from section 3, run against this topology instead. Would
-give a second, directly comparable data point — multi-AZ majority-write
-cost should be dramatically lower than the ~18ms multi-region floor,
-proportional to the latency difference above. Worth running before
-considering this section complete.
+**Write-concern benchmark, run against this topology** — same
+methodology and concurrency ramp as section 3, run from `psmdb-multiaz-1`:
+
+### w:"majority"
+
+| concurrency | ops/sec | p50 ms | p95 ms | p99 ms | errors |
+|---|---|---|---|---|---|
+| 10 | 1060.8 | 8.65 | 14.39 | 20.3 | 0 |
+| 25 | 1186.3 | 15.38 | 46.4 | 134.43 | 0 |
+| 50 | 1483.5 | 27.88 | 61.91 | 96.31 | 0 |
+| 100 | 1425.2 | 53.79 | 136.3 | 242.92 | 0 |
+
+### w:1
+
+| concurrency | ops/sec | p50 ms | p95 ms | p99 ms | errors |
+|---|---|---|---|---|---|
+| 10 | 2357.2 | 3.79 | 8.03 | 13.53 | 0 |
+| 25 | 2105.6 | 9.71 | 27.07 | 42.15 | 0 |
+| 50 | 1655.4 | 21.39 | 74.19 | 153.04 | 0 |
+| 100 | 1638.0 | 36.41 | 183.34 | 333.3 | 0 |
+
+**Three findings from the direct comparison against section 3's
+multi-region numbers:**
+
+1. **The majority-write floor cleanly decomposes into local commit
+   overhead + network RTT.** At low concurrency, multi-AZ's `w:"majority"`
+   p50 is **8.65ms**, multi-region's is **18.2ms**. The gap (≈9.5ms)
+   lines up almost exactly with the measured cross-region RTT (9-11ms,
+   section 2) — and multi-AZ's 8.65ms floor is very close to what
+   multi-region's floor would be *minus* that RTT. In other words:
+   `majority-write latency ≈ local durability overhead (~8-9ms,
+   present in both topologies) + network RTT to the needed secondary
+   (~0ms multi-AZ, ~9-11ms multi-region)`. The "local overhead" — likely
+   WiredTiger journal commit and driver/server processing — exists
+   regardless of topology; only the network component changes.
+
+2. **At high concurrency, the two topologies converge.** By
+   concurrency 100, multi-AZ (53.79ms p50, 1425 ops/sec) and
+   multi-region (51.04ms p50, 1582 ops/sec, section 3) look similar —
+   both hitting the same `t3.medium` capacity ceiling. **Multi-AZ's
+   latency advantage matters most when the system isn't saturated** —
+   under heavy load, instance capacity becomes the bottleneck
+   regardless of network topology. Don't oversell multi-AZ as
+   unlimited extra throughput headroom; it buys lower latency at a
+   given load, not a higher ceiling.
+
+3. **`w:1` latency is topology-independent — striking confirmation.**
+   Multi-AZ and multi-region `w:1` numbers are nearly identical at
+   every concurrency level (e.g. p50 at 10: 3.79ms vs 3.61ms; at 100:
+   36.41ms vs 37.13ms). This makes complete sense once stated: `w:1`
+   only waits on the primary's own local acknowledgment, never any
+   secondary — so it can't be affected by cross-AZ vs cross-region
+   network distance at all. **Only `w:"majority"` is topology-sensitive**,
+   because only it waits on replication. Clean, well-evidenced
+   distinction for the talk.
 
 ## Next up (Phase 5)
 
