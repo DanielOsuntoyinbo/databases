@@ -1,0 +1,91 @@
+Sharded cluster build — raw evidence backing section 10 of
+01-evidence-log.md. Verbatim from the actual session.
+
+================================================================
+sh.status() BEFORE adding shard1
+================================================================
+shardingVersion
+{ _id: 1, clusterId: ObjectId('6a8305815965c64cb094e475') }
+---
+shards
+[]
+---
+active mongoses
+[]
+---
+databases
+[
+  { database: { _id: 'config', primary: 'config', partitioned: true }, collections: {} }
+]
+
+================================================================
+First sh.addShard() attempt — FAILED (the hostname bug)
+================================================================
+sh.addShard("psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,psmdb-shard1-paris:27017")
+
+MongoServerError[OperationFailed]: in seed list
+psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,psmdb-shard1-paris:27017,
+host psmdb-shard1-london:27017 does not belong to replica set psmdb-shard1; found
+{ hosts: [ "10.10.2.26:27017", "10.20.2.158:27017", "10.30.2.189:27017" ],
+  setName: "psmdb-shard1", setVersion: 1, isWritablePrimary: true,
+  primary: "10.10.2.26:27017", tags: { region: "london" } }
+
+Root cause: shard1's rs_initiate template addressed members by raw
+private IP instead of psmdb_alias — an oversight, missed carrying
+over the hostname-switch pattern already used for the main cluster
+and multiaz. The error message itself made the mismatch obvious
+(seed list used hostnames, live replica set config used IPs).
+
+Fix applied: manual rs.reconfig() on shard1's primary, same pattern
+used twice before (main cluster, then multiaz):
+  cfg = rs.conf()
+  cfg.members[0].host = "psmdb-shard1-london:27017"
+  cfg.members[1].host = "psmdb-shard1-ireland:27017"
+  cfg.members[2].host = "psmdb-shard1-paris:27017"
+  rs.reconfig(cfg)
+
+Result after fix:
+psmdb-shard1-london:27017  PRIMARY    health=1
+psmdb-shard1-ireland:27017 SECONDARY  health=1
+psmdb-shard1-paris:27017   SECONDARY  health=1
+
+================================================================
+sh.addShard() retry — SUCCESS
+================================================================
+sh.addShard("psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,psmdb-shard1-paris:27017")
+
+================================================================
+sh.status() AFTER — confirmed working
+================================================================
+shardingVersion
+{ _id: 1, clusterId: ObjectId('6a8305815965c64cb094e475') }
+---
+shards
+[
+  {
+    _id: 'psmdb-shard1',
+    host: 'psmdb-shard1/psmdb-shard1-ireland:27017,psmdb-shard1-london:27017,psmdb-shard1-paris:27017',
+    state: 1,
+    topologyTime: Timestamp({ t: 1786978755, i: 3 })
+  }
+]
+---
+active mongoses
+[ { '7.0.39-21': 3 } ]
+---
+balancer
+{
+  'Currently enabled': 'yes',
+  'Failed balancer rounds in last 5 attempts': 0,
+  'Migration Results for the last 24 hours': 'No recent migrations',
+  'Currently running': 'no'
+}
+---
+databases
+[
+  { database: { _id: 'config', primary: 'config', partitioned: true }, collections: {} }
+]
+
+One shard registered, all 3 mongos routers actively connected and
+visible in cluster metadata (PSMDB version 7.0.39-21 confirmed on
+each).

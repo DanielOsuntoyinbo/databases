@@ -1,0 +1,57 @@
+mongos regional locality benchmark — raw evidence backing section 11
+of 01-evidence-log.md. Client colocated on psmdb-mongos-london,
+targeting local (localhost:27017) vs remote (psmdb-mongos-ireland:27017).
+shard1's primary was in London for this entire test.
+
+================================================================
+w:1 — LOCAL (localhost:27017)
+================================================================
+concurrency=10:  count=52114 errors=0 throughput=2605.7 ops/sec
+  latency_ms: min=1.44 p50=3.36 p95=6.57 p99=9.41 max=442.3 mean=3.83
+concurrency=25:  count=50178 errors=0 throughput=2508.9 ops/sec
+  latency_ms: min=1.51 p50=8.53 p95=20.49 p99=30.92 max=265.64 mean=9.9
+concurrency=50:  count=42146 errors=0 throughput=2107.3 ops/sec
+  latency_ms: min=1.53 p50=18.65 p95=56.66 p99=85.74 max=388.67 mean=23.3
+
+================================================================
+w:1 — REMOTE (psmdb-mongos-ireland:27017)
+================================================================
+concurrency=10:  count=8319 errors=0 throughput=415.9 ops/sec
+  latency_ms: min=21.84 p50=23.24 p95=26.86 p99=34.88 max=278.46 mean=24.04
+concurrency=25:  count=21053 errors=0 throughput=1052.7 ops/sec
+  latency_ms: min=21.38 p50=23.12 p95=24.67 p99=28.17 max=385.26 mean=23.74
+concurrency=50:  count=41696 errors=0 throughput=2084.8 ops/sec
+  latency_ms: min=21.24 p50=23.07 p95=24.49 p99=26.22 max=615.75 mean=23.78
+
+================================================================
+w:"majority" — LOCAL (localhost:27017)
+================================================================
+concurrency=10:  count=9253  errors=0 throughput=462.6  ops/sec
+  latency_ms: min=14.22 p50=20.57 p95=27.89 p99=38.73 max=171.47 mean=21.61
+concurrency=25:  count=23222 errors=0 throughput=1161.1 ops/sec
+  latency_ms: min=14.29 p50=20.77 p95=27.15 p99=30.36 max=256.91 mean=21.42
+concurrency=50:  count=38172 errors=0 throughput=1908.6 ops/sec
+  latency_ms: min=14.63 p50=24.61 p95=33.67 p99=41.78 max=326.72 mean=25.74
+
+================================================================
+w:"majority" — REMOTE (psmdb-mongos-ireland:27017)
+================================================================
+concurrency=10:  count=4359  errors=0 throughput=217.9  ops/sec
+  latency_ms: min=37.46 p50=44.88 p95=49.4  p99=61.96 max=312.84 mean=45.9
+concurrency=25:  count=11076 errors=0 throughput=553.8  ops/sec
+  latency_ms: min=35.33 p50=44.36 p95=48.72 p99=50.81 max=411.86 mean=45.18
+concurrency=50:  count=21626 errors=0 throughput=1081.3 ops/sec
+  latency_ms: min=34.81 p50=44.15 p95=51.31 p99=85.74 max=617.61 mean=45.97
+
+--- Analysis ---
+
+Remote floor (~23ms w:1, ~45ms w:majority) is roughly 2x local floor
+(~3ms w:1, ~20ms w:majority) — consistent with paying the cross-region
+network hop twice (client -> remote mongos -> shard primary -> back)
+instead of once. Remote latency stays flat across concurrency 10-50;
+local latency climbs with load — the fixed double-hop network cost
+dominates at these concurrency levels and swamps any local queueing
+effect. w:majority adds a consistent ~17-20ms offset on top of both
+local and remote floors (shard1's own replication-wait cost),
+confirming that cost is shard-internal and independent of which mongos
+was used.

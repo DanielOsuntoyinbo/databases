@@ -558,6 +558,8 @@ Everything in the original Phase 4 scenario catalogue is now **done**:
 
 ## 9. Multi-AZ vs multi-region: direct latency comparison (slides 8, 10)
 
+Full raw benchmark output: `docs/evidence-raw/multiaz-benchmark-raw-20260816.txt`
+
 Entirely separate replica set (`psmdb-multiaz-lab`), 3 nodes all within
 London, spread across its 3 real AWS AZs (`eu-west-2a/b/c`) — this
 required extending the VPC to a genuine third subnet, since the
@@ -711,6 +713,8 @@ in this build:**
 
 ## 10. Sharded cluster build (slides 34–37)
 
+Full raw build log (sh.status before/after, the hostname bug and fix): `docs/evidence-raw/sharding-build-raw-20260817.txt`
+
 **Scope, deliberately trimmed:** CSRS (3 nodes, 1 per region) + 1 shard
 replica set (3 nodes, 1 per region) + 3 `mongos` routers (1 per
 region). Shard count doesn't matter for the actual thing being tested
@@ -734,6 +738,8 @@ One shard registered, all 3 `mongos` routers actively connected to the
 cluster.
 
 ## 11. mongos regional locality: does it matter which router you use? (slides 34-37)
+
+Full raw benchmark output: `docs/evidence-raw/mongos-locality-benchmark-raw-20260817.txt`
 
 **Test design:** benchmark client colocated on London's `mongos` box,
 deliberately targeting local (`localhost:27017`) vs a remote router
@@ -798,6 +804,8 @@ remote router — the actual availability half of the story, versus the
 latency-cost half measured here. **Now tested — see section 12.**
 
 ## 12. Full regional outage of the sharding layer (slides 34-37, capstone)
+
+Full raw capture (baseline/during/recovery status, the write-through-outage proof): `docs/evidence-raw/regional-outage-capstone-raw-20260817.txt`
 
 Superset of the mongos-only failover idea above — rather than testing
 `mongos` in isolation, took down **all three** of Ireland's

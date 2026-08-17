@@ -1,0 +1,81 @@
+Multi-AZ comparison topology — raw evidence backing section 9 of
+01-evidence-log.md. All data below is verbatim from the actual
+session, not reconstructed.
+
+================================================================
+rs.conf() — psmdb-multiaz-lab
+================================================================
+{
+  _id: 'psmdb-multiaz-lab',
+  version: 2,
+  term: 1,
+  members: [
+    { _id: 0, host: 'psmdb-multiaz-1:27017' },
+    { _id: 1, host: 'psmdb-multiaz-2:27017' },
+    { _id: 2, host: 'psmdb-multiaz-3:27017' }
+  ]
+}
+
+Baseline cross-AZ pingMs (from rs.status()):
+psmdb-multiaz-2: pingMs 0
+psmdb-multiaz-3: pingMs 0
+
+================================================================
+Write concern benchmark — w:"majority"
+================================================================
+concurrency=10:  count=21216 errors=0 throughput=1060.8 ops/sec
+  latency_ms: min=4.25 p50=8.65 p95=14.39 p99=20.3 max=268.67 mean=9.42
+concurrency=25:  count=23727 errors=0 throughput=1186.3 ops/sec
+  latency_ms: min=4.81 p50=15.38 p95=46.4 p99=134.43 max=495.83 mean=20.93
+concurrency=50:  count=29671 errors=0 throughput=1483.5 ops/sec
+  latency_ms: min=5.39 p50=27.88 p95=61.91 p99=96.31 max=735.94 mean=32.73
+concurrency=100: count=28505 errors=0 throughput=1425.2 ops/sec
+  latency_ms: min=6.17 p50=53.79 p95=136.3 p99=242.92 max=1310.66 mean=65.41
+
+================================================================
+Write concern benchmark — w:1
+================================================================
+concurrency=10:  count=47143 errors=0 throughput=2357.2 ops/sec
+  latency_ms: min=0.55 p50=3.79 p95=8.03 p99=13.53 max=276.99 mean=4.23
+concurrency=25:  count=42111 errors=0 throughput=2105.6 ops/sec
+  latency_ms: min=0.56 p50=9.71 p95=27.07 p99=42.15 max=478.43 mean=11.8
+concurrency=50:  count=33108 errors=0 throughput=1655.4 ops/sec
+  latency_ms: min=0.62 p50=21.39 p95=74.19 p99=153.04 max=1209.26 mean=29.4
+concurrency=100: count=32759 errors=0 throughput=1638.0 ops/sec
+  latency_ms: min=0.64 p50=36.41 p95=183.34 p99=333.3 max=1379.19 mean=56.82
+
+================================================================
+Read preference benchmark — primary
+================================================================
+concurrency=10:  count=48506 errors=0 throughput=2425.3 ops/sec
+  latency_ms: min=0.43 p50=3.31 p95=9.66 p99=13.75 max=245.14 mean=4.12
+concurrency=25:  count=40937 errors=0 throughput=2046.8 ops/sec
+  latency_ms: min=0.44 p50=8.86 p95=29.81 p99=60.12 max=471.93 mean=12.17
+concurrency=50:  count=42072 errors=0 throughput=2103.6 ops/sec
+  latency_ms: min=0.45 p50=16.98 p95=61.73 p99=93.33 max=697.08 mean=23.25
+concurrency=100: count=33521 errors=0 throughput=1676.0 ops/sec
+  latency_ms: min=0.47 p50=30.81 p95=188.14 p99=320.06 max=1831.35 mean=55.47
+
+================================================================
+Read preference benchmark — primaryPreferred
+================================================================
+concurrency=10:  count=47344 errors=0 throughput=2367.2 ops/sec
+  latency_ms: min=0.41 p50=3.4 p95=9.79 p99=14.38 max=225.41 mean=4.22
+concurrency=25:  count=41306 errors=0 throughput=2065.3 ops/sec
+  latency_ms: min=0.44 p50=9.04 p95=29.98 p99=51.48 max=403.68 mean=12.01
+concurrency=50:  count=41877 errors=0 throughput=2093.8 ops/sec
+  latency_ms: min=0.42 p50=17.09 p95=60.82 p99=92.59 max=693.13 mean=23.34
+concurrency=100: count=32388 errors=0 throughput=1619.4 ops/sec
+  latency_ms: min=0.43 p50=31.44 p95=197.29 p99=331.73 max=1747.93 mean=57.05
+
+================================================================
+Read preference benchmark — secondaryPreferred
+================================================================
+concurrency=10:  count=63229 errors=0 throughput=3161.4 ops/sec
+  latency_ms: min=0.92 p50=2.58 p95=6.69 p99=9.68 max=220.7 mean=3.16
+concurrency=25:  count=59223 errors=0 throughput=2961.2 ops/sec
+  latency_ms: min=0.94 p50=6.23 p95=20.76 p99=30.96 max=325.91 mean=8.37
+concurrency=50:  count=42447 errors=0 throughput=2122.3 ops/sec
+  latency_ms: min=0.95 p50=15.39 p95=59.66 p99=170.94 max=1050.39 mean=22.97
+concurrency=100: count=45306 errors=0 throughput=2265.3 ops/sec
+  latency_ms: min=0.95 p50=25.78 p95=130.92 p99=220.8 max=1033.69 mean=41.09
