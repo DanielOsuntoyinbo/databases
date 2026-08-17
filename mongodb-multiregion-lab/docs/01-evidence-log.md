@@ -709,6 +709,30 @@ in this build:**
    evidence it's a real, general finding — not a one-off artifact of
    the original test setup.
 
+## 10. Sharded cluster build (slides 34–37)
+
+**Scope, deliberately trimmed:** CSRS (3 nodes, 1 per region) + 1 shard
+replica set (3 nodes, 1 per region) + 3 `mongos` routers (1 per
+region). Shard count doesn't matter for the actual thing being tested
+here — `mongos` regional placement and routing behavior — so a second
+shard was skipped as unnecessary scope for this build.
+
+**Real bug hit and fixed:** the `shard1` bootstrap template addressed
+members by raw private IP instead of `psmdb_alias`, missed when
+carrying over the hostname-switch pattern already established for the
+main cluster and `multiaz`. `sh.addShard()` failed on first attempt
+with a clear error naming the mismatch; fixed via the same manual
+`rs.reconfig()` pattern used twice before.
+
+**Confirmed working end to end** — `sh.status()` after registering
+the shard:
+```
+shards: [{ _id: 'psmdb-shard1', host: 'psmdb-shard1/psmdb-shard1-ireland:27017,psmdb-shard1-london:27017,psmdb-shard1-paris:27017', state: 1 }]
+active mongoses: [{ '7.0.39-21': 3 }]
+```
+One shard registered, all 3 `mongos` routers actively connected to the
+cluster.
+
 ## Next up (Phase 5)
 
 - Config server replica set (CSRS), 3 members, 1 per region — same
