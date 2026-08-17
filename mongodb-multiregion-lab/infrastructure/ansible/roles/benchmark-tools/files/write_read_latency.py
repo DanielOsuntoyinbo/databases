@@ -27,6 +27,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pymongo import MongoClient, WriteConcern
 from pymongo.read_preferences import ReadPreference
 
+READ_PREF_MAP = {
+    "primary": ReadPreference.PRIMARY,
+    "primaryPreferred": ReadPreference.PRIMARY_PREFERRED,
+    "secondary": ReadPreference.SECONDARY,
+    "secondaryPreferred": ReadPreference.SECONDARY_PREFERRED,
+    "nearest": ReadPreference.NEAREST,
+}
+
 
 def percentile(sorted_data, pct):
     if not sorted_data:
@@ -63,9 +71,9 @@ def worker_write(uri, user, password, write_concern, db_name, coll_name, stop_at
     client.close()
 
 
-def worker_read(uri, user, password, db_name, coll_name, stop_at, latencies, errors, lock):
+def worker_read(uri, user, password, db_name, coll_name, stop_at, latencies, errors, lock, read_pref):
     client = make_client(uri, user, password)
-    coll = client.get_database(db_name, read_preference=ReadPreference.PRIMARY)[coll_name]
+    coll = client.get_database(db_name, read_preference=read_pref)[coll_name]
     local_latencies = []
     local_errors = 0
     while time.monotonic() < stop_at:
@@ -101,6 +109,7 @@ def run_once(args, concurrency, password):
                 futures.append(ex.submit(
                     worker_read, args.uri, args.user, password,
                     args.db, args.collection, stop_at, latencies, errors, lock,
+                    READ_PREF_MAP[args.read_preference],
                 ))
         for f in as_completed(futures):
             f.result()
@@ -109,6 +118,7 @@ def run_once(args, concurrency, password):
     result = {
         "op": args.op,
         "write_concern": wc if args.op == "write" else None,
+        "read_preference": args.read_preference if args.op == "read" else None,
         "concurrency": concurrency,
         "duration_sec": args.duration,
         "count": len(latencies),
@@ -133,6 +143,8 @@ def main():
     p.add_argument("--user", default="psmdb_admin")
     p.add_argument("--op", choices=["write", "read"], required=True)
     p.add_argument("--write-concern", default="majority", help="'1' or 'majority' (write tests only)")
+    p.add_argument("--read-preference", default="primary",
+                    choices=list(READ_PREF_MAP.keys()), help="read tests only")
     p.add_argument("--concurrency", type=int, default=20, help="ignored if --ramp is set")
     p.add_argument("--ramp", default=None, help="comma-separated concurrency steps, e.g. 10,25,50,100")
     p.add_argument("--duration", type=int, default=20, help="seconds per step")
