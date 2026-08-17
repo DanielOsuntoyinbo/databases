@@ -15,7 +15,7 @@ scenario is run — this is the source for slide evidence, not memory.
 | 3 — Write concern + read preference benchmarks | ✅ Done | 22–25 |
 | 4 — Arbiter, primary failure, regional outage, recovery | ✅ Done — graceful/ungraceful failover, even-vote & region-majority anti-patterns, arbiter fix, write-concern-vs-election-majority nuance | 16–19, 26, 30–32 |
 | 4b — Multi-AZ comparison topology (bonus, not originally scoped) | ✅ Done — write concern + read preference benchmarks, direct latency decomposition vs multi-region | 8, 10 |
-| 5 — Sharded cluster (CSRS + shard(s) + mongos) | ⬜ Not started | 34–37 |
+| 5 — Sharded cluster (CSRS + shard(s) + mongos) | ✅ Done — full regional outage survived (CSRS + shard1 + mongos all lose Ireland simultaneously, zero app-visible impact) | 34–37 |
 | 6 — Full evidence pass + rehearsal | ⬜ Not started | — |
 
 ---
@@ -792,10 +792,69 @@ pinned to one specific router at a time to isolate the variable, which
 is the right choice for measurement but not how a real app would
 connect. Worth a one-line caveat on the slide.
 
-**Not yet tested:** stopping a region's `mongos` entirely and
-confirming an app using it fails over to a remote router — the actual
-availability half of the story, versus the latency-cost half measured
-here.
+**Not yet tested (at time of writing above):** stopping a region's
+`mongos` entirely and confirming an app using it fails over to a
+remote router — the actual availability half of the story, versus the
+latency-cost half measured here. **Now tested — see section 12.**
+
+## 12. Full regional outage of the sharding layer (slides 34-37, capstone)
+
+Superset of the mongos-only failover idea above — rather than testing
+`mongos` in isolation, took down **all three** of Ireland's
+sharding-layer components simultaneously: `mongos`, `configsvr`
+(CSRS member), and `shard1` member. This is the actual "one region
+goes fully dark" scenario the sharded cluster needs to survive.
+
+**Baseline (all healthy):**
+```
+CSRS:    10.10.1.182 PRIMARY, 10.20.1.14 SECONDARY, 10.30.1.38 SECONDARY
+shard1:  psmdb-shard1-london PRIMARY, -ireland SECONDARY, -paris SECONDARY
+```
+
+**Ireland's mongos, configsvr, and shard1 member all stopped
+simultaneously** (2026-08-17 16:15:08 UTC).
+
+**CSRS during outage** — majority intact (2-of-3), unaffected:
+```
+10.10.1.182:27017 PRIMARY    health=1
+10.20.1.14:27017  (not reachable/healthy)  health=0
+10.30.1.38:27017  SECONDARY  health=1
+```
+
+**shard1 during outage** — same, majority intact:
+```
+psmdb-shard1-london:27017  PRIMARY    health=1
+psmdb-shard1-ireland:27017 (not reachable/healthy)  health=0
+psmdb-shard1-paris:27017   SECONDARY  health=1
+```
+
+**The actual proof — seed-list client writing through the cluster
+while Ireland is entirely dark:**
+```javascript
+python3 write_read_latency.py --op write --write-concern 1 --concurrency 10 --duration 20 \
+  --uri "mongodb://psmdb-mongos-london:27017,psmdb-mongos-ireland:27017,psmdb-mongos-paris:27017/"
+```
+```json
+{
+  "count": 26044,
+  "errors": 0,
+  "throughput_ops_sec": 1302.2,
+  "latency_ms": { "p50": 2.08, "p95": 19.33, "p99": 25.41, "mean": 7.67 }
+}
+```
+**Zero errors, normal throughput** — the client never noticed Ireland
+was gone. CSRS majority held, `shard1` majority held, and the driver
+silently routed around the one dead `mongos` in the seed list.
+
+**Recovery confirmed** — all three Ireland components restarted,
+both CSRS and `shard1` show all members healthy again.
+
+**This is the capstone result for the sharded cluster section**: a
+complete regional outage — router, config server, and data shard all
+at once — produces zero application-visible impact for a properly
+configured client, because every layer (CSRS, shard, routing) was
+independently built with enough redundancy (majority-preserving
+distribution across 3 regions) to survive losing any one of them.
 
 ## Next up (Phase 5)
 
