@@ -733,6 +733,70 @@ active mongoses: [{ '7.0.39-21': 3 }]
 One shard registered, all 3 `mongos` routers actively connected to the
 cluster.
 
+## 11. mongos regional locality: does it matter which router you use? (slides 34-37)
+
+**Test design:** benchmark client colocated on London's `mongos` box,
+deliberately targeting local (`localhost:27017`) vs a remote router
+(`psmdb-mongos-ireland:27017`) — same client location, only the router
+target changes, isolating the "does mongos choice matter" variable.
+`shard1`'s primary is in London for this test.
+
+### w:1 (isolates routing/connection cost)
+
+| Target | concurrency | ops/sec | p50 ms |
+|---|---|---|---|
+| Local (London) | 10 | 2605.7 | 3.36 |
+| Local (London) | 25 | 2508.9 | 8.53 |
+| Local (London) | 50 | 2107.3 | 18.65 |
+| Remote (Ireland) | 10 | 415.9 | 23.24 |
+| Remote (Ireland) | 25 | 1052.7 | 23.12 |
+| Remote (Ireland) | 50 | 2084.8 | 23.07 |
+
+### w:"majority" (adds shard1's replication-wait cost on top)
+
+| Target | concurrency | ops/sec | p50 ms |
+|---|---|---|---|
+| Local (London) | 10 | 462.6 | 20.57 |
+| Local (London) | 25 | 1161.1 | 20.77 |
+| Local (London) | 50 | 1908.6 | 24.61 |
+| Remote (Ireland) | 10 | 217.9 | 44.88 |
+| Remote (Ireland) | 25 | 553.8 | 44.36 |
+| Remote (Ireland) | 50 | 1081.3 | 44.15 |
+
+**Findings:**
+
+1. **mongos choice genuinely matters, and the cost is real.** Remote
+   floor (~23ms `w:1`, ~45ms `w:"majority"`) vs local floor (~3ms
+   `w:1`, ~20ms `w:"majority"`) — roughly 2x the single-hop cross-region
+   RTT in both cases, consistent with paying the network cost twice:
+   client→remote mongos→shard primary→back, rather than
+   client→local mongos→shard primary→back.
+
+2. **Remote latency is flat across concurrency; local rises with load.**
+   Remote sits at ~23-24ms (`w:1`) regardless of 10, 25, or 50
+   concurrent writers — the fixed double-hop network cost dominates
+   and swamps any local queueing effect at these concurrency levels.
+   Local numbers climb steadily with load (3.4ms → 18.7ms), the same
+   saturation pattern seen in every other benchmark in this log.
+
+3. **`w:"majority"` adds a consistent offset on top, doesn't change
+   the local-vs-remote story.** Both local and remote floors shift up
+   by roughly the same ~17-20ms (shard1's own replication-wait cost,
+   independent of which mongos was used) — confirming this cost is
+   shard-internal, not mongos-related, exactly as expected.
+
+**Methodology note for the talk:** a real application normally
+connects via a full seed list of all `mongos` hosts, letting the
+driver auto-select and fail over on its own — this test deliberately
+pinned to one specific router at a time to isolate the variable, which
+is the right choice for measurement but not how a real app would
+connect. Worth a one-line caveat on the slide.
+
+**Not yet tested:** stopping a region's `mongos` entirely and
+confirming an app using it fails over to a remote router — the actual
+availability half of the story, versus the latency-cost half measured
+here.
+
 ## Next up (Phase 5)
 
 - Config server replica set (CSRS), 3 members, 1 per region — same
