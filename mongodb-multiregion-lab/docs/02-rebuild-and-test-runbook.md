@@ -1,69 +1,54 @@
-# Rebuild & Test Runbook
+# MongoDB Multi-Region Resilience Lab — Rebuild & Test Runbook
 
-This is the manual replay sequence for everything built and tested in
-this lab that isn't fully captured by `make apply`/`make site` alone.
-See `docs/00-lab-architecture-and-build-plan.md` for the *why*, and
-`docs/01-evidence-log.md` for the *results* — this doc is the *how*.
+This document is the **how**: rebuild the environment, select a topology, run an experiment and verify recovery.
 
-**Honest scope note:** several steps below (hostname switches, the
-2+2+1 topology construction, `sh.addShard()`) were done live via
-`mongosh` during the original build and were never automated into
-Ansible. Re-running `make apply` + `make site` alone will NOT
-reproduce these — you have to replay them manually, as documented
-here.
+- Architecture and design rationale: `00-lab-architecture-and-build-plan.md`
+- Measured results and interpretation: `01-evidence-log.md`
+- Raw captures: `evidence-raw/`
+
+> **Reproducibility note:** infrastructure and baseline configuration are automated, but several experimental topology transitions were originally performed live with `mongosh`. They are documented explicitly below. `make apply` + `make site` alone does not recreate every experimental state.
 
 ---
 
-## Part A — Base infrastructure rebuild
+## Part A — Build the base lab
 
 ### A0. Prerequisites
 
 ```bash
-export AWS_PROFILE=psmdb-lab   # add to ~/.bashrc to persist across sessions
+export AWS_PROFILE=psmdb-lab
 cd ~/Databases/mongodb-multiregion-lab
 ```
 
-You'll need: the SSH key (`~/.ssh/id_ed25519`), your current public IP
-for `admin_ssh_cidr` in `terraform.tfvars` (`curl -4 -s ifconfig.me` —
-force IPv4), and your Ansible vault password.
+You need the SSH key, your current public IP configured as `admin_ssh_cidr`, the Ansible vault password, Terraform and Ansible.
 
-### A1. Terraform — everything
+### A1. Provision infrastructure
 
 ```bash
 make init
-make plan     # review: should show every module (network, main
-              # replicaset, arbiter, London-2/Ireland-2/Ireland-3,
-              # multiaz x3, configsvr x3, shard1 x3, mongos x3)
+make plan
 make apply
 ```
 
-### A2. Ansible — OS + PSMDB on everything except mongos
+Review the plan before applying. The complete lab includes the regional network, baseline replica-set nodes, extra members used by voting-topology experiments, the Multi-AZ comparison nodes, CSRS, shard replica-set members and `mongos` routers.
+
+### A2. Configure PSMDB
 
 ```bash
 make site
 ```
 
-This bootstraps the **main 3-node replica set** automatically
-(`rs.initiate()` + admin user creation is scripted in the
-`replicaset` role) — but addresses members by **raw private IP**,
-not hostname. See A4 below.
+This bootstraps the main three-member replica set automatically. The initial bootstrap may use private IP addresses; the hostname normalization below makes experiment output easier to read.
 
-### A3. Multi-AZ and sharding layers
+### A3. Deploy Multi-AZ and sharded layers
 
 ```bash
-make deploy-multiaz     # bootstraps psmdb-multiaz-lab (3 nodes, London only)
-make deploy-sharding    # bootstraps CSRS, then shard1, then starts mongos
+make deploy-multiaz
+make deploy-sharding
 ```
 
-Same caveat — `multiaz` and `shard1` both bootstrap addressed by raw
-IP. CSRS also ends up IP-addressed and was **never actually switched**
-to hostnames during the original build (a known, harmless
-inconsistency — functional either way, just not visually clean).
+### A4. Normalize main replica-set member names
 
-### A4. Manual hostname switch — main replica set
-
-SSH into whichever node is PRIMARY (check with `rs.status()` if
-unsure), `mongosh` in, then:
+From the current PRIMARY:
 
 ```javascript
 cfg = rs.conf()
@@ -73,9 +58,9 @@ cfg.members[2].host = "psmdb-paris:27017"
 rs.reconfig(cfg)
 ```
 
-### A5. Manual hostname switch — multiaz
+### A5. Normalize Multi-AZ member names
 
-SSH into `psmdb-multiaz-1` (or whichever is PRIMARY):
+From the Multi-AZ PRIMARY:
 
 ```javascript
 cfg = rs.conf()
@@ -85,9 +70,9 @@ cfg.members[2].host = "psmdb-multiaz-3:27017"
 rs.reconfig(cfg)
 ```
 
-### A6. Manual hostname switch — shard1
+### A6. Normalize shard member names
 
-SSH into `shard1`'s PRIMARY (check `rs.status()`):
+From shard1's PRIMARY:
 
 ```javascript
 cfg = rs.conf()
@@ -97,211 +82,275 @@ cfg.members[2].host = "psmdb-shard1-paris:27017"
 rs.reconfig(cfg)
 ```
 
-*(CSRS hostname switch was never done in the original build — optional
-if you want full consistency; same pattern, target `psmdb-configsvr-*`
-hostnames on the CSRS primary.)*
+The CSRS hostname switch was not part of the original evidence pass; it is optional for consistency.
 
-### A7. Register the shard with the cluster
+### A7. Register shard1
 
-From any `mongos` node:
+From any `mongos`:
 
 ```javascript
 sh.addShard("psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,psmdb-shard1-paris:27017")
-sh.status()   // confirm shards: [...] shows psmdb-shard1, active mongoses: 3
-```
-
-**Known gotcha:** if `shard1`'s hostname switch (A6) hasn't happened
-yet, this fails with `OperationFailed: ... does not belong to replica
-set`. Do A6 before A7.
-
-### A8. Verification checklist
-
-```bash
-# On any main-cluster node:
-rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
-# Expect: 3 healthy members, hostnames not IPs
-
-# On multiaz-1:
-rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
-# Expect: 3 healthy members, hostnames not IPs
-
-# On shard1's primary:
-rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
-# Expect: 3 healthy members, hostnames not IPs
-
-# On any mongos:
 sh.status()
-# Expect: 1 shard registered, 3 active mongoses
 ```
 
-At this point you have the **base topology**: main cluster (3 nodes,
-1+1+1), multiaz (3 nodes), and a working sharded cluster (CSRS + 1
-shard + 3 mongos). This matches evidence log sections 1-6, 9, 10.
+If `sh.addShard()` reports that a member does not belong to the replica set, complete A6 first.
+
+### A8. Verify the base lab
+
+```javascript
+// main replica set
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+```
+
+Verify separately on the main replica set, Multi-AZ replica set and shard1 that all expected members are healthy. From `mongos`, run `sh.status()` and confirm shard1 is registered and the routers are active.
+
+At this point the reusable baseline is ready: **1+1+1 main replica set + Multi-AZ comparison replica set + CSRS + shard1 + regional mongos routers**.
 
 ---
 
-## Part B — 2+2+1 topology construction (optional)
+## Part B — Select an alternate voting topology
 
-Only needed if replaying the arbiter / even-vote / region-majority
-demos (evidence log sections 7-8). Skip this if you only need the base
-topology from Part A.
+Only use this section for experiments that need a topology other than the baseline 1+1+1 replica set.
 
-**This part has two divergent branches from the same starting point**
-— it was built, torn down, and rebuilt differently during the original
-session. Pick the branch matching what you want to demo; don't run
-both against the same live cluster without reversing the first.
+### B0. Build the 2+2 starting state
 
-### B0. Starting point (from Part A's main cluster)
-
-Provision the extra nodes first (already in Terraform if you ran A1):
-`psmdb-london-2`, `psmdb-ireland-2`, `psmdb-ireland-3`,
-`psmdb-paris-arbiter`. All get OS+PSMDB via `make site` (they're in
-the `extra_replicaset` / `arbiter` inventory groups).
-
-From the main cluster's PRIMARY:
+Ensure the extra nodes are provisioned/configured, then from the main PRIMARY:
 
 ```javascript
 rs.add({ host: "psmdb-london-2:27017", priority: 3, tags: { region: "london" } })
 rs.add({ host: "psmdb-ireland-2:27017", priority: 2, tags: { region: "ireland" } })
-// wait for both to show SECONDARY/healthy before continuing
+// Wait until both are healthy SECONDARY members.
 rs.remove("psmdb-paris:27017")
 ```
 
-You're now at **4 voting members** (London x2, Ireland x2) — the
-even-vote anti-pattern state. This is the point evidence log section 7
-was captured from.
+You now have **four voting data-bearing members: London x2 + Ireland x2**. This is the `RS-03` even-vote state.
 
-### Branch 1 — Arbiter fix (evidence log section 7, "the fix" + write-concern nuance)
+### B1. Add an arbiter — restore election majority (`RS-05`)
 
 ```javascript
 rs.addArb("psmdb-paris-arbiter:27017")
 ```
 
-Now 5 votes (4 data + 1 arbiter), odd, majority-safe. This is the
-state for re-running the partition test expecting success instead of
-failure, and the `w:1` vs `w:"majority"` nuance test (arbiter fixes
-election, not write-concern majority).
+This creates five votes: four data-bearing members plus one arbiter.
 
-### Branch 2 — Region-majority anti-pattern (evidence log section 8)
+The purpose is precise: **the arbiter can contribute a vote to an election, but it does not add another copy of the data**. Do not treat this as a general durability fix.
 
-If coming from Branch 1, first reverse it:
+### B2. Build the region-majority anti-pattern (`RS-04`)
+
+If the arbiter is present, remove it first:
+
 ```javascript
 rs.remove("psmdb-paris-arbiter:27017")
 ```
 
-Then add the third Ireland node instead of an arbiter:
+Then add the third Ireland data-bearing member:
+
 ```javascript
 rs.add({ host: "psmdb-ireland-3:27017", priority: 1, tags: { region: "ireland" } })
 ```
 
-Now 5 votes (London x2, Ireland x3) — odd total, but Ireland alone
-holds majority. This is the region-majority anti-pattern state.
+The result is **London x2 + Ireland x3**. Five votes is an odd total, but one failure domain holds the entire majority. `RS-04` demonstrates why member count alone is not the resilience model.
+
+> `REC-01` will reuse a 2+3-style topology for deliberate majority-loss recovery testing once that evidence has been captured. It is not documented as a completed experiment yet.
 
 ---
 
-## Part C — Test scenario catalog
+## Part C — Run the experiments
 
-Each scenario below is independently replayable against the relevant
-base topology. Always capture a "before" `rs.status()` first.
+Before every experiment:
 
-### C1. Primary failure — graceful (section 6)
+1. Record `date -u`.
+2. Capture `rs.conf()` where topology matters.
+3. Capture a healthy `rs.status()` before the failure/action.
+4. Run the action.
+5. Capture the MongoDB state, relevant logs and client outcome.
+6. Restore the environment and verify the intended steady state.
+
+### `RS-01` — Primary failure and election
+
+**Question:** What changes between a graceful primary stop and an abrupt failure?
+
+Graceful:
+
 ```bash
 ssh <primary-node>
-sudo systemctl stop mongod   # graceful stop
-date -u                       # note timestamp
+sudo systemctl stop mongod
+date -u
 ```
-Check `rs.status()` from a surviving node — expect election within
-~50ms of the stop, reason `"step up request"` in the log.
 
-### C2. Primary failure — ungraceful (section 6)
+Capture the surviving members' state and election logs. The measured evidence in this lab showed the graceful stop triggering a step-up election without waiting for the full election timeout.
+
+Ungraceful:
+
 ```bash
 ssh <primary-node>
 sudo systemctl kill -s SIGKILL mongod
 date -u
 ```
-Expect ~10-11s election delay (full `electionTimeoutMillis`), log
-reason `"electionTimeout"`, and `"Startup from clean shutdown?": false`
-on restart.
 
-### C3. Even-vote partition demo (section 7)
-Requires Branch 1's 4-node state (before adding the arbiter) or after
-removing the arbiter from a 5-node state.
+Capture the same evidence. In the recorded run, election start followed the election-timeout path; see `01-evidence-log.md` for the measured timings rather than assuming those numbers for every environment.
+
+Restore the stopped member and confirm it rejoins and catches up.
+
+---
+
+### `RS-02` — Regional failure with majority preserved
+
+**Question:** If one failure domain disappears, do the surviving voting members still form a majority?
+
+Use the baseline 1+1+1 topology. Stop the member in one region and inspect `rs.status()` plus a client write from the surviving service path.
+
+The expected design property is not “three regions are resilient”; it is **the surviving topology still has the required majority**.
+
+---
+
+### `RS-03` — Even-vote topology
+
+Requires the four-member 2+2 state from B0.
+
 ```bash
-# stop both nodes of one region-pair, e.g. both Ireland nodes
 ssh psmdb-ireland "sudo systemctl stop mongod"
 ssh psmdb-ireland-2 "sudo systemctl stop mongod"
 ```
-From a surviving node: `rs.status()` shows step-down, then attempt a
-write — expect `NotWritablePrimary`. Log shows repeated
-`"cannot see a majority"` refusals every ~10s.
-**Restore:** start both nodes back up.
 
-### C4. Region-majority anti-pattern demo (section 8)
-Requires Branch 2's state (Ireland holds 3-of-5 votes).
+Inspect `rs.status()`, attempt a write and capture election logs. The recorded evidence shows the surviving 2-of-4 side unable to elect a writable primary.
+
+Restore both services before moving to another topology.
+
+---
+
+### `RS-04` — Region-majority anti-pattern
+
+Requires B2: London x2 + Ireland x3.
+
 ```bash
 ssh psmdb-ireland "sudo systemctl stop mongod"
 ssh psmdb-ireland-2 "sudo systemctl stop mongod"
 ssh psmdb-ireland-3 "sudo systemctl stop mongod"
 ```
-Same failure signature as C3, different cause (majority concentrated
-in one region, not an even split). **Restore:** start all three back up.
 
-### C5. Arbiter write-concern nuance (section 7)
-Requires Branch 1 (arbiter added). Run C3's outage against this
-5-node state — election still succeeds (arbiter provides the 3rd
-vote), but confirm the actual nuance:
+Inspect the surviving London members and attempt a write. This demonstrates a different path to the same availability failure: the total vote count is odd, but the lost region contained the majority.
+
+Restore all three Ireland services after capture.
+
+---
+
+### `RS-05` — Arbiter and election majority
+
+Requires B1.
+
+Repeat the relevant two-data-member outage with the arbiter available. Capture election state first, then separately test write concern:
+
 ```javascript
 db.getSiblingDB("benchmark").latency_test.insertOne(
-  {test: "w1"}, {writeConcern: {w: 1}})              // succeeds instantly
+  {test: "w1"}, {writeConcern: {w: 1}})
+
 db.getSiblingDB("benchmark").latency_test.insertOne(
   {test: "wmajority"}, {writeConcern: {w: "majority", wtimeout: 5000}})
-  // times out — arbiter doesn't count toward data-bearing majority
 ```
 
-### C6. Write concern benchmark — main cluster (section 3)
-On the PRIMARY:
+The experiment separates two ideas that are easy to conflate: **election majority** and **data-bearing acknowledgement**.
+
+---
+
+### `WC-01` — `w:1` vs `w:"majority"`
+
+Run from the London primary for the recorded benchmark methodology:
+
 ```bash
 python3 write_read_latency.py --op write --write-concern majority --ramp 10,25,50,100 --duration 20
 python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50,100 --duration 20
 ```
 
-### C7. Read preference benchmark — main cluster (section 4)
+Do not copy the existing latency numbers into a new environment and call them expected results. Capture the new run and compare it with the evidence log.
+
+---
+
+### `READ-01` — Read preference
+
 ```bash
 python3 write_read_latency.py --op read --read-preference primary --ramp 10,25,50,100 --duration 20
 python3 write_read_latency.py --op read --read-preference primaryPreferred --ramp 10,25,50,100 --duration 20
 python3 write_read_latency.py --op read --read-preference secondaryPreferred --ramp 10,25,50,100 --duration 20
 ```
 
-### C8. Multi-AZ benchmarks (section 9)
-Same as C6/C7 but run on `psmdb-multiaz-1`, with:
+Capture throughput and latency together; routing a read elsewhere can change both network cost and where CPU work occurs.
+
+---
+
+### `LAT-01` — Multi-region vs Multi-AZ
+
+Run the same benchmark methodology against the Multi-AZ replica set:
+
 ```bash
 --uri "mongodb://localhost:27017/?replicaSet=psmdb-multiaz-lab"
 ```
 
-### C9. mongos regional locality (section 11)
-On `psmdb-mongos-london`:
-```bash
-python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50 --duration 20 --uri "mongodb://localhost:27017/"
-python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50 --duration 20 --uri "mongodb://psmdb-mongos-ireland:27017/"
-# repeat both with --write-concern majority
-```
+Compare with the multi-region results using the same operation, write concern/read preference and concurrency. The comparison is more useful than treating either latency number in isolation.
 
-### C10. Full regional outage capstone (section 12)
-Requires the sharded cluster (Part A complete).
+---
+
+### `SH-01` — Sharded-cluster regional outage
+
+Requires the complete sharded cluster.
+
+Simulate loss of Ireland across the routing, metadata and shard layers:
+
 ```bash
 ssh psmdb-mongos-ireland "sudo systemctl stop mongos"
 ssh psmdb-configsvr-ireland "sudo systemctl stop mongod"
 ssh psmdb-shard1-ireland "sudo systemctl stop mongod"
 date -u
 ```
-Check CSRS and shard1 both hold majority (2-of-3 each), then from
-`psmdb-mongos-london`:
+
+Verify that the surviving CSRS members still form majority and that shard1 still forms majority. Then test through the client seed list from London:
+
 ```bash
 python3 write_read_latency.py --op write --write-concern 1 --concurrency 10 --duration 20 \
   --uri "mongodb://psmdb-mongos-london:27017,psmdb-mongos-ireland:27017,psmdb-mongos-paris:27017/"
 ```
-Expect `errors: 0` — seed-list client routes around the dead region
-transparently. **Restore:** start all three Ireland services back up.
+
+Capture the client result and the surviving CSRS/shard states. Restore all Ireland services and verify the cluster returns to steady state.
+
+---
+
+### `REC-01` — Recover after majority loss — planned
+
+Target topology: 2+3.
+
+This scenario is intentionally **not yet written as a procedure**. The test will be documented only after the majority-loss/reconfiguration experiment is performed and raw evidence is committed. The final runbook should capture:
+
+- healthy 2+3 configuration,
+- loss of the three-member region,
+- proof that 2/5 cannot elect a primary,
+- the exact recovery/reconfiguration procedure used,
+- data-safety implications,
+- recovered configuration and client result.
+
+---
+
+### `DR-01` — Disaster recovery when HA is insufficient — planned
+
+This is also not a completed lab scenario yet. It will cover backup/PITR-based service recovery separately from replica-set high availability, with measured RTO/RPO only after a repeatable restore test exists.
+
+---
+
+## Part D — Evidence capture standard
+
+For future experiments, prefer an experiment-oriented evidence directory/name rather than slide-oriented filenames. For example:
+
+```text
+evidence-raw/
+└── REC-01-majority-loss-recovery/
+    ├── 01-before-rs-conf.txt
+    ├── 02-before-rs-status.txt
+    ├── 03-majority-lost.txt
+    ├── 04-reconfiguration.txt
+    ├── 05-recovered-rs-status.txt
+    └── 06-client-validation.txt
+```
+
+Existing evidence does not need to be renamed just to satisfy this convention; preserve working references and apply the structure to new experiments first.
 
 ---
 
@@ -311,9 +360,4 @@ transparently. **Restore:** start all three Ireland services back up.
 make destroy
 ```
 
-One command tears down everything provisioned in Part A regardless of
-which Part B branch or Part C scenarios were run on top — all
-replica-set-level state (topology changes, added members, sharding
-registration) lives only in the running `mongod`/`mongos` processes,
-not in Terraform state, so it's gone the moment the instances are
-destroyed. Nothing to clean up separately.
+Terraform removes the provisioned infrastructure. Replica-set topology changes and sharding registration stored only in the running database processes disappear with those instances, so no separate topology cleanup is required after destruction.
