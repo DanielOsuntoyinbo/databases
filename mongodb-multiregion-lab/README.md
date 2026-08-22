@@ -37,11 +37,12 @@ Choose the path that matches what you want to do:
 | I want to... | Go to |
 |---|---|
 | Understand the architecture and why it was built this way | [`docs/00-lab-architecture-and-build-plan.md`](docs/00-lab-architecture-and-build-plan.md) |
-| See the observed results from the experiments | [`docs/01-evidence-log.md`](docs/01-evidence-log.md) |
+| See the concise measured results from the experiments | [`docs/01-evidence-log.md`](docs/01-evidence-log.md) |
+| Read the full timelines, benchmark decomposition, anomalies and implementation findings | [`docs/03-detailed-findings.md`](docs/03-detailed-findings.md) |
 | Rebuild the environment and replay the tests | [`docs/02-rebuild-and-test-runbook.md`](docs/02-rebuild-and-test-runbook.md) |
 | Inspect the underlying captured output | [`docs/evidence-raw/`](docs/evidence-raw/) |
 
-**Documentation model:** architecture = **why/what**, runbook = **how**, evidence log = **what happened**, raw evidence = **proof**.
+**Documentation model:** architecture = **why/what**, runbook = **how**, evidence log = **what happened**, detailed findings = **why the result is interesting**, raw evidence = **proof**.
 
 ## Lab architecture at a glance
 
@@ -77,7 +78,7 @@ These IDs are intended to remain stable even if the conference deck changes.
 | `REC-01` | Recovering after majority loss | Planned: how can a badly placed replica set be recovered when the surviving side cannot form a majority? |
 | `DR-01` | Disaster recovery beyond HA | Planned: how do you recover when normal HA is no longer sufficient? |
 
-For the exact commands and current topology prerequisites for implemented experiments, use the [rebuild and test runbook](docs/02-rebuild-and-test-runbook.md). For measured results, use the [evidence log](docs/01-evidence-log.md).
+For the exact commands and current topology prerequisites for implemented experiments, use the [rebuild and test runbook](docs/02-rebuild-and-test-runbook.md). For measured results, use the [evidence log](docs/01-evidence-log.md). For the richer technical narrative behind those results, including detailed election timings, WiredTiger restart evidence, Multi-AZ benchmark tables, arbiter/write-concern nuance, `mongos` locality and the full sharded-outage proof, use the [detailed findings](docs/03-detailed-findings.md).
 
 ## Build and replay
 
@@ -121,6 +122,8 @@ For a typical scenario, capture:
 4. application/write behaviour where relevant,
 5. the recovered state after services return.
 
+The documentation intentionally has two evidence layers: the concise evidence log makes the results easy to scan, while the detailed findings preserve the richer investigative context instead of throwing it away. `evidence-raw/` remains the underlying source for checking the claims.
+
 That makes the material useful in three ways: **learn the concept → reproduce the failure → inspect the evidence**.
 
 ## Percona Live 2026
@@ -142,6 +145,7 @@ mongodb-multiregion-lab/
     ├── 00-lab-architecture-and-build-plan.md
     ├── 01-evidence-log.md
     ├── 02-rebuild-and-test-runbook.md
+    ├── 03-detailed-findings.md
     └── evidence-raw/
 ```
 
@@ -151,6 +155,6 @@ Infrastructure and baseline configuration are automated. Some experimental topol
 
 ---
 
-**For conference attendees:** start with the [experiment guide](#experiment-guide), then open the evidence log for the scenario you want to inspect.
+**For conference attendees:** start with the [experiment guide](#experiment-guide), then open the evidence log for the scenario you want to inspect. Use the detailed findings when you want the deeper technical reasoning and exact measured context behind a slide.
 
 **For future lab work:** use the architecture document and runbook as the stable foundation, and add new scenarios/evidence without coupling them to presentation slide numbers.
