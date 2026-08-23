@@ -134,7 +134,7 @@ The Percona Live deck maps to these IDs; the IDs do not depend on the deck.
 
 ## 8. Evidence model
 
-For each experiment, aim to preserve four things:
+For each experiment, the evidence model preserves four things:
 
 1. **Before** — topology/configuration and healthy state.
 2. **Failure/action** — exactly what was stopped, changed or measured.
@@ -149,7 +149,7 @@ For each experiment, aim to preserve four things:
 
 ```text
 mongodb-multiregion-lab/
-├── README.md                         # conference-focused front door
+├── README.md                         # conference-facing entry point
 ├── Makefile
 ├── infrastructure/
 │   ├── terraform/
@@ -162,7 +162,7 @@ mongodb-multiregion-lab/
 └── write_read_latency.py
 ```
 
-The README can become conference-neutral after Percona Live without requiring the lab itself to be reorganized.
+The README provides the conference-facing entry point while the architecture, experiment IDs and evidence structure remain useful independently of the presentation.
 
 ---
 
