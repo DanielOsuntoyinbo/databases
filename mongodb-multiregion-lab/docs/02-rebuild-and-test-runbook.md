@@ -19,7 +19,7 @@ export AWS_PROFILE=psmdb-lab
 cd ~/Databases/mongodb-multiregion-lab
 ```
 
-You need the SSH key, your current public IP configured as `admin_ssh_cidr`, the Ansible vault password, Terraform and Ansible.
+Required prerequisites are the SSH key, the current public IP configured as `admin_ssh_cidr`, the Ansible vault password, Terraform and Ansible.
 
 ### A1. Provision infrastructure
 
@@ -93,7 +93,7 @@ sh.addShard("psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,p
 sh.status()
 ```
 
-If `sh.addShard()` reports that a member does not belong to the replica set, complete A6 first — this is exactly what happened during the original build: the seed list used hostnames while the replica set's own config still held private IPs, and the error message named the mismatch directly.
+If `sh.addShard()` reports that a member does not belong to the replica set, complete A6 first. During the original build, the seed list used hostnames while the replica set's own configuration still held private IPs, and the error message identified the mismatch directly.
 
 ### A8. Verify the base lab
 
@@ -123,7 +123,7 @@ rs.add({ host: "psmdb-ireland-2:27017", priority: 2, tags: { region: "ireland" }
 rs.remove("psmdb-paris:27017")
 ```
 
-You now have **four voting data-bearing members: London x2 + Ireland x2**. This is the `RS-03` even-vote state.
+The resulting topology has **four voting data-bearing members: London x2 + Ireland x2**. This is the `RS-03` even-vote state.
 
 ### B1. Add an arbiter — restore election majority (`RS-05`)
 
@@ -133,7 +133,7 @@ rs.addArb("psmdb-paris-arbiter:27017")
 
 This creates five votes: four data-bearing members plus one arbiter.
 
-The purpose is precise: **the arbiter can contribute a vote to an election, but it does not add another copy of the data**. Do not treat this as a general durability fix.
+The purpose is precise: **the arbiter can contribute a vote to an election, but it does not add another copy of the data**. It therefore changes election availability without providing additional data-bearing durability.
 
 ### B2. Build the region-majority anti-pattern (`RS-04`)
 
@@ -151,7 +151,7 @@ rs.add({ host: "psmdb-ireland-3:27017", priority: 1, tags: { region: "ireland" }
 
 The result is **London x2 + Ireland x3**. Five votes is an odd total, but one failure domain holds the entire majority. `RS-04` demonstrates why member count alone is not the resilience model.
 
-`REC-01` reuses this same 2+3 shape, but as of that experiment it was built as an **independent, dedicated topology** rather than by extending the running main cluster — see the Appendix for why, and for the scoped-Terraform-build procedure that made it possible without provisioning the full lab.
+`REC-01` reuses this same 2+3 shape, but it was built as an **independent, dedicated topology** rather than by extending the running main cluster. The Appendix documents the scoped Terraform procedure used to create that topology without provisioning the full lab.
 
 ---
 
@@ -262,7 +262,7 @@ python3 write_read_latency.py --op write --write-concern majority --ramp 10,25,5
 python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50,100 --duration 20
 ```
 
-Do not copy the existing latency numbers into a new environment and call them expected results. Capture the new run and compare it with the evidence log.
+Existing latency numbers should not be treated as expected values for a different environment. Capture the new run and compare it with the evidence log.
 
 ---
 
@@ -327,7 +327,7 @@ python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50 --dur
 
 Repeat both with `--write-concern majority` for a second data point. No `replicaSet=` parameter is needed — `mongos` is a single connection point, not itself a replica set member.
 
-Note which region currently holds shard1's primary before running this, since the result is directional (cost depends on router-to-primary distance, not router-to-router distance).
+Record which region currently holds shard1's primary before running this experiment, since the result is directional: the cost depends on router-to-primary distance rather than router-to-router distance.
 
 ---
 
@@ -335,7 +335,7 @@ Note which region currently holds shard1's primary before running this, since th
 
 Target topology: **London x2 + Ireland x3**, built as a dedicated scoped rebuild (see Appendix) rather than by extending a running main cluster via Part B, since this experiment was run after a full teardown and only needed these 5 nodes.
 
-**This is deliberately irreversible — do not restore Ireland expecting a clean rejoin.** Unlike every other experiment in this runbook, the point of `REC-01` is to demonstrate MongoDB's recovery procedure for a *permanent* majority loss, and to show that the recovery is a one-way door.
+**This experiment is deliberately irreversible.** Unlike the reversible outage experiments, `REC-01` demonstrates MongoDB's recovery procedure for a *permanent* majority loss and the one-way configuration change that follows forced reconfiguration.
 
 1. Capture a healthy baseline `rs.status()` on all 5 members.
 2. Stop all 3 Ireland members simultaneously:
@@ -354,15 +354,15 @@ Target topology: **London x2 + Ireland x3**, built as a dedicated scoped rebuild
    rs.reconfig(cfg, { force: true })
    ```
 5. Confirm recovery — a primary should be elected among the 2 survivors within seconds, and a `w:"majority"` write should succeed against the new (2-vote) majority.
-6. **Prove irreversibility** — restart one of the excluded Ireland members and connect to it directly:
+6. **Validate exclusion of an old member** — restart one of the excluded Ireland members and connect to it directly:
    ```javascript
    rs.status()
    // expect: MongoServerError[InvalidReplicaSetConfig]
    ```
-   The excluded member is running and has its data, but cannot rejoin — it still holds the old config, which the survivors have moved on from.
+   The excluded member is running and has its data, but cannot rejoin because it still holds the old configuration while the recovered side has moved to a different configuration.
 7. Tear down this scoped topology when done (`make destroy` against just these resources, or the full lab teardown if nothing else is running).
 
-**Safety note for anyone reusing this procedure:** only use `force: true` when the missing majority is confirmed permanently gone. If the "lost" nodes are only temporarily unreachable and come back while still holding the old config, forcing a reconfiguration first can produce genuine split-brain rather than the clean lockout demonstrated here.
+**Safety note:** `force: true` is appropriate only when the authoritative surviving side has been established and normal majority-based recovery is not available. If the missing nodes are merely temporarily unreachable, forced reconfiguration can create conflicting replica-set histories when the other side returns.
 
 ---
 
@@ -387,27 +387,27 @@ Existing evidence does not need to be renamed just to satisfy this convention; p
 
 ## Appendix — Scoped rebuilds via `terraform -target`
 
-Some experiments (`REC-01`) don't need the full lab — just a handful of data-bearing nodes. `terraform -target` supports this, but has a real limitation worth knowing before it costs you time: **any output referencing a resource outside the targeted set is dropped from state entirely, not just that key** — and `try()` cannot rescue it, because the pruning happens at the plan-graph level, before `try()`'s runtime error-catching ever runs.
+Some experiments (`REC-01`) do not need the full lab and can be built from a smaller set of data-bearing nodes. `terraform -target` supports this, but has an important limitation: **any output referencing a resource outside the targeted set is dropped from state entirely, not just that key**. `try()` cannot recover the output because pruning happens at the plan-graph level before runtime expression evaluation.
 
 **Symptom:** `terraform output <name>` returns `Error: Output "<name>" not found`, even immediately after a clean, successful `apply`.
 
-**Workaround:** read the actual values out of state instead of through outputs — the resource genuinely exists, only the output's evaluation was pruned:
+**Workaround:** read the actual values from state instead of through outputs. The resource exists; only the output's evaluation was pruned:
 
 ```bash
 terraform state show 'module.replicaset_london.aws_instance.node[0]' | grep -E "public_ip|private_ip"
 ```
 
-Then hand-build a minimal static Ansible inventory from those values (bypassing `psmdb.py`, which depends on `terraform output -json`). Match the structure the target role expects — check the relevant role's tasks and template for exactly which hostvars and group structure are required (for the main `replicaset` role: `replicaset_member_id`, `replicaset_priority`, `region`, `private_ip`, plus a `region_<name>` child group for its `delegate_to` targets). Run directly against the hand-built file rather than through `make site` (which regenerates `hosts.yml` via `psmdb.py` and would overwrite it):
+A minimal static Ansible inventory can then be built from those values, bypassing `psmdb.py`, which depends on `terraform output -json`. The inventory must match the structure expected by the target role. For the main `replicaset` role this includes `replicaset_member_id`, `replicaset_priority`, `region`, `private_ip`, plus a `region_<name>` child group for `delegate_to` targets. Run directly against the static inventory rather than through `make site`, which regenerates `hosts.yml` via `psmdb.py`:
 
 ```bash
 ansible-playbook -i inventory/hosts-<scenario>.yml playbooks/site.yml --ask-vault-pass
 ```
 
-**A smaller, related gotcha:** after a full `make destroy` + rebuild, both `/etc/hosts` and `~/.ssh/known_hosts` on your workstation will still have stale entries under the *same hostnames*, pointing at the old, now-destroyed IPs/host keys. SSH will either silently try the dead IP first (a duplicate `/etc/hosts` line) or refuse to connect with a "REMOTE HOST IDENTIFICATION HAS CHANGED" warning — which is correct, since it genuinely did change. Fix both before troubleshooting anything else if a rebuilt node seems unreachable:
+**Related rebuild consideration:** after a full `make destroy` + rebuild, `/etc/hosts` and `~/.ssh/known_hosts` on the workstation may still contain stale entries under the same hostnames, pointing at destroyed IPs or old host keys. SSH may therefore try a stale IP or correctly refuse the connection with a `REMOTE HOST IDENTIFICATION HAS CHANGED` warning. Remove the stale entries before diagnosing the rebuilt node:
 
 ```bash
-sudo sed -i '/psmdb-<name>/d' /etc/hosts   # remove ALL old lines first, then re-add fresh ones
-ssh-keygen -f ~/.ssh/known_hosts -R psmdb-<name>   # per hostname
+sudo sed -i '/psmdb-<name>/d' /etc/hosts   # remove old lines, then add the current mapping
+ssh-keygen -f ~/.ssh/known_hosts -R psmdb-<name>   # remove the old host key
 ```
 
 ---
