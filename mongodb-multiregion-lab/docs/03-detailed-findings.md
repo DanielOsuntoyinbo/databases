@@ -4,7 +4,7 @@ This document preserves the **richer forensic detail** behind the concise experi
 
 Use the documents together:
 
-- `01-evidence-log.md` — concise experiment index, measured outcomes and talk-safe conclusions.
+- `01-evidence-log.md` — concise experiment index, measured outcomes and conclusions.
 - `03-detailed-findings.md` — detailed timelines, benchmark decomposition, anomalies, corrections and implementation notes.
 - `evidence-raw/` — underlying raw captures.
 
@@ -71,13 +71,13 @@ WiredTiger recovery took approximately **215 ms** in this idle run:
 - ~1 ms rollback-to-stable
 - ~17 ms checkpoint
 
-This was small because the cluster was nearly idle at crash time. It should **not** be presented as a production recovery expectation: a busier system can have more work to recover.
+This was small because the cluster was nearly idle at crash time. It should **not** be interpreted as a production recovery expectation: a busier system can have more work to recover.
 
 ### Priority-takeover correction
 
 The lab originally assumed London might need a manual election to become PRIMARY again after restart. Testing disproved that assumption: after catching up, the higher-priority London member triggered `priorityTakeover` and reclaimed PRIMARY automatically.
 
-That correction is deliberately preserved because it is more useful than quietly rewriting the original expectation.
+That correction is deliberately preserved because the evidence is more useful when it records what the lab actually demonstrated rather than rewriting the original expectation.
 
 ### RPO observation and caveat
 
@@ -96,7 +96,7 @@ The lab added two data-bearing members:
 - `psmdb-london-2` — second London AZ
 - `psmdb-ireland-2` — second Ireland AZ
 
-It also provisioned a standalone Paris arbiter (`t3.micro`). The arbiter was intentionally kept on its own instance rather than as a second `mongod` process on an existing host: the dedicated node made the topology and `rs.conf()` output easier to explain, while reusing the normal PSMDB installation role.
+It also provisioned a standalone Paris arbiter (`t3.micro`). The arbiter was intentionally kept on its own instance rather than as a second `mongod` process on an existing host: the dedicated node made the topology and `rs.conf()` output easier to inspect while reusing the normal PSMDB installation role.
 
 The arbiter has no special storage mode in `mongod.conf`; arbiter behaviour is a **replica-set configuration property** applied with `rs.addArb()`.
 
@@ -189,7 +189,7 @@ db.getSiblingDB("benchmark").latency_test.insertOne(
 
 The error contained `n: 1`: the operation had applied on the primary, but the requested durability guarantee was not satisfied within the timeout.
 
-**Talk-safe lesson:** adding an arbiter can restore an election path, but an arbiter is not another copy of the data. Election behaviour and write durability must be reasoned about separately.
+**Conclusion:** adding an arbiter can restore an election path, but an arbiter is not another copy of the data. Election behaviour and write durability must be reasoned about separately.
 
 ---
 
@@ -234,7 +234,7 @@ reason: "Not standing for election because I cannot see a majority (mask 0x1)"
 
 Full capture: `docs/evidence-raw/region-majority-antipattern-log-20260816.txt`.
 
-**Lesson:** odd total votes is incomplete guidance. The resilience question is whether the **required majority survives the failure domain you intend to lose**. A five-member replica set can still be region-fragile if three votes live in one region.
+**Lesson:** odd total votes is incomplete guidance. The resilience question is whether the **required majority survives the failure domain being designed for**. A five-member replica set can still be region-fragile if three votes live in one region.
 
 This same 2+3 topology was later used as the basis for the completed `REC-01` majority-loss recovery experiment.
 
@@ -319,7 +319,7 @@ Two useful confirmations:
 - `primary` reads were broadly topology-independent because the operation stayed on the primary.
 - `secondaryPreferred` exposed the same network-distance effect as majority writes: at concurrency 10, Multi-AZ p50 was **2.58 ms** vs **9.83 ms** in the multi-region set.
 
-The surprisingly strong secondaryPreferred throughput in some runs is affected by the benchmark-client placement and shared CPU, so treat it as a lab observation rather than a universal recommendation.
+The surprisingly strong secondaryPreferred throughput in some runs is affected by the benchmark-client placement and shared CPU, so it should be treated as a lab observation rather than a universal recommendation.
 
 ---
 
@@ -335,7 +335,7 @@ Scope was intentionally kept to what the resilience experiment needed:
 
 A second shard was deliberately skipped because it did not materially improve the regional-resilience question being tested.
 
-### Real build issue: member-name mismatch
+### Build issue: member-name mismatch
 
 The shard1 bootstrap initially used raw private IP addresses rather than the region-readable aliases already used by other replica sets. `sh.addShard()` failed because the host list supplied to `mongos` did not match the replica-set member identity.
 
@@ -352,7 +352,7 @@ shards: [{
 active mongoses: [{ '7.0.39-21': 3 }]
 ```
 
-Keeping this build issue is useful for anyone reproducing the lab: MongoDB replica-set identity and the hostnames passed to `sh.addShard()` need to agree.
+This build issue is retained as a reproducibility detail: MongoDB replica-set identity and the hostnames passed to `sh.addShard()` need to agree.
 
 ---
 
@@ -360,7 +360,7 @@ Keeping this build issue is useful for anyone reproducing the lab: MongoDB repli
 
 Raw output: `docs/evidence-raw/mongos-locality-benchmark-raw-20260817.txt`.
 
-The benchmark client ran on the London `mongos` host and was deliberately pinned first to local London `mongos`, then to remote Ireland `mongos`. The shard primary was in London. This isolates router-location cost; it is **not** how a normal resilient application should connect, because a real client should use multiple router endpoints.
+The benchmark client ran on the London `mongos` host and was deliberately pinned first to local London `mongos`, then to remote Ireland `mongos`. The shard primary was in London. This isolates router-location cost; it is **not** how a normal resilient application should connect, because a production client should use multiple router endpoints.
 
 ### `w:1`
 
@@ -390,7 +390,7 @@ The benchmark client ran on the London `mongos` host and was deliberately pinned
 - Remote p50 stayed around ~23 ms for `w:1` across the tested concurrency levels while local latency rose with load.
 - `w:"majority"` added the shard replica-set replication wait on top of either router path; it did not change the basic local-vs-remote conclusion.
 
-Again, the test intentionally pinned one router at a time for measurement. The actual resilience test below used a multi-router seed list.
+The test intentionally pinned one router at a time for measurement. The resilience test below used a multi-router seed list.
 
 ---
 
@@ -440,7 +440,7 @@ psmdb-shard1-paris:27017    SECONDARY                health=1
 
 ### Client proof
 
-From London, the client seed list deliberately still included the **dead Ireland router**:
+From London, the client seed list deliberately still included the **unavailable Ireland router**:
 
 ```bash
 python3 write_read_latency.py --op write --write-concern 1 \
@@ -472,7 +472,7 @@ Recorded result:
 
 The strongest directly supported statement is: **the tested application write workload continued with zero errors while the Ireland region's router, CSRS member and shard member were unavailable**.
 
-Do not over-generalize the `1302.2 ops/sec` figure as universal “normal throughput” without a strictly comparable healthy-baseline run. The zero-error application outcome and the surviving layer states are the more defensible resilience evidence.
+The `1302.2 ops/sec` figure should not be interpreted as universal “normal throughput” without a strictly comparable healthy-baseline run. The zero-error application outcome and the surviving layer states are the more defensible resilience evidence.
 
 ### Recovery
 
@@ -523,15 +523,15 @@ That member did not silently rejoin. It still belonged to the old five-member co
 - Forced reconfiguration is an administrative recovery mechanism, not normal failover.
 - It must not be used casually against members that are merely temporarily unreachable; doing so can create conflicting replica-set histories when the other side returns.
 
-**Talk-safe conclusion:** use forced reconfiguration only when you have established which surviving side is authoritative and normal majority-based recovery is not available. The experiment demonstrates recovery from majority loss; it is not a recommendation to bypass quorum during routine outages.
+**Conclusion:** forced reconfiguration is appropriate only when the authoritative surviving side has been established and normal majority-based recovery is not available. The experiment demonstrates recovery from majority loss; it is not a recommendation to bypass quorum during routine outages.
 
 ---
 
-## Experimental decisions and caveats worth preserving
+## Experimental decisions and caveats
 
 ### Organic latency instead of synthetic delay
 
-The lab considered `tc netem`, and the Ansible role remains available, but the evidence selected for the talk used real AWS inter-region latency. That decision avoids presenting fabricated latency as though it were the observed production-like path.
+The lab considered `tc netem`, and the Ansible role remains available, but the evidence selected for the conference session used real AWS inter-region latency. That decision avoids presenting fabricated latency as though it were the observed production-like path.
 
 ### 10,000-QPS target deliberately dropped
 
@@ -539,11 +539,11 @@ The test nodes are `t3.medium` burstable instances. Driving an arbitrary 10k-QPS
 
 ### Client and server share a box in several benchmarks
 
-This is an explicit confound. Some throughput effects — especially `w:1` declining at higher concurrency and some secondary-read behaviour — are influenced by the benchmark process and `mongod` competing for the same CPU. Keep those observations, but do not present them as pure topology effects.
+This is an explicit confound. Some throughput effects — especially `w:1` declining at higher concurrency and some secondary-read behaviour — are influenced by the benchmark process and `mongod` competing for the same CPU. Those observations remain documented, but they should not be interpreted as pure topology effects.
 
 ### Preserve anomalies rather than smoothing them away
 
-The `secondaryPreferred` concurrency-10 result in the multi-region read test did not match the otherwise clean pattern. It was flagged as potentially topology-discovery/startup related and should be rerun before being used as a standalone claim.
+The `secondaryPreferred` concurrency-10 result in the multi-region read test did not match the otherwise clean pattern. It was flagged as potentially topology-discovery/startup related and is retained as an anomaly rather than a standalone finding.
 
 This is intentional evidence discipline: anomalous data should be marked, not silently discarded.
 
