@@ -14,10 +14,11 @@ Nothing here should be read as a universal MongoDB timing guarantee. Exact value
 
 ## `RS-01` — Primary failure, election and recovery: full timeline
 
-Raw captures referenced by the original evidence pass include:
+Raw captures include:
 
 - `docs/evidence-raw/rs-status-before-primary-failure-20260816.txt`
 - `docs/evidence-raw/election-log-ireland-becomes-primary-20260816.txt`
+- `docs/evidence-raw/election-log-ungraceful-failure-20260816.txt`
 
 ### Graceful primary stop
 
@@ -32,7 +33,7 @@ Raw captures referenced by the original evidence pass include:
 | 14:58:50.383 | London reclaimed PRIMARY | automatic `priorityTakeover`, ~12.4 s after restart |
 | 14:59:30 | Recovery confirmed | Ireland and Paris both showed `replLag: 0 secs` |
 
-Two different recovery measurements were intentionally kept separate:
+Two different recovery measurements are intentionally kept separate:
 
 - **Failover:** the graceful election reached a writable replacement primary in roughly **50 ms once the election started**.
 - **Reclaim:** restart → catch-up/eligibility → priority takeover took about **12.4 s** in this idle test.
@@ -41,7 +42,7 @@ Those numbers answer different operational questions and should not be averaged 
 
 ### Ungraceful primary failure
 
-The same primary was then killed with:
+The same primary was killed with:
 
 ```bash
 systemctl kill -s SIGKILL mongod
@@ -50,7 +51,7 @@ systemctl kill -s SIGKILL mongod
 | Time (UTC) | Event |
 |---|---|
 | 15:13:55 | SIGKILL sent; systemd recorded `Result: signal`, `code=killed, signal=KILL` |
-| 15:14:06.131 | Election started — `Starting an election, since we've seen no PRIMARY in election timeout period`; `electionTimeoutPeriodMillis: 10000` |
+| 15:14:06.131 | Election started after no PRIMARY was seen for the election timeout period |
 | 15:14:06.144 | Dry-run vote toward London failed with `HostUnreachable` / `Connection refused` |
 | 15:14:06.174 | `Election succeeded, assuming primary role` |
 | 15:14:06.222 | `Transition to primary complete; database writes are now permitted` |
@@ -95,7 +96,7 @@ The lab added two data-bearing members:
 - `psmdb-london-2` — second London AZ
 - `psmdb-ireland-2` — second Ireland AZ
 
-It also provisioned a standalone Paris arbiter (`t3.micro`). The arbiter was intentionally kept on its own instance rather than as a second `mongod` process on an existing host: the dedicated node made the topology and `rs.conf()` output much easier to explain, while reusing the normal PSMDB installation role.
+It also provisioned a standalone Paris arbiter (`t3.micro`). The arbiter was intentionally kept on its own instance rather than as a second `mongod` process on an existing host: the dedicated node made the topology and `rs.conf()` output easier to explain, while reusing the normal PSMDB installation role.
 
 The arbiter has no special storage mode in `mongod.conf`; arbiter behaviour is a **replica-set configuration property** applied with `rs.addArb()`.
 
@@ -235,7 +236,7 @@ Full capture: `docs/evidence-raw/region-majority-antipattern-log-20260816.txt`.
 
 **Lesson:** odd total votes is incomplete guidance. The resilience question is whether the **required majority survives the failure domain you intend to lose**. A five-member replica set can still be region-fragile if three votes live in one region.
 
-This topology is also a useful basis for planned `REC-01`, but the majority-loss recovery/reconfiguration procedure must not be documented as completed until that new experiment is actually run.
+This same 2+3 topology was later used as the basis for the completed `REC-01` majority-loss recovery experiment.
 
 ---
 
@@ -355,7 +356,7 @@ Keeping this build issue is useful for anyone reproducing the lab: MongoDB repli
 
 ---
 
-## Sharded routing locality benchmark
+## `SH-02` — sharded routing locality benchmark
 
 Raw output: `docs/evidence-raw/mongos-locality-benchmark-raw-20260817.txt`.
 
@@ -481,6 +482,51 @@ All three Ireland services were restarted. Subsequent CSRS and shard1 status sho
 
 ---
 
+## `REC-01` — recover after majority loss: completed recovery proof
+
+Topology: **London x2 + Ireland x3**. Ireland held three of the five votes, so losing all three Ireland members left London with two healthy data-bearing members but no majority under the existing configuration.
+
+This scenario differs from the reversible outage tests. It demonstrates forced reconfiguration after majority loss and the consequences of establishing a new authoritative configuration.
+
+### Majority loss
+
+All three Ireland members were stopped together. The two London members remained healthy but could not elect a primary because the five-member configuration still required three votes.
+
+### Forced reconfiguration
+
+On a surviving London member:
+
+```javascript
+cfg = rs.conf()
+cfg.members = cfg.members.filter(m => ["psmdb-london:27017", "psmdb-london-2:27017"].includes(m.host))
+cfg.version += 1
+rs.reconfig(cfg, { force: true })
+```
+
+The new configuration contained only the two survivors. MongoDB then reported `majorityVoteCount: 2` and `votingMembersCount: 2`, elected a primary among the survivors, and a `w:"majority"` write succeeded against the new configuration.
+
+### Returning excluded member
+
+One Ireland member was restarted with its data intact and connected to directly:
+
+```javascript
+rs.status()
+// MongoServerError[InvalidReplicaSetConfig]: Our replica set config is invalid or we are not a member of it
+```
+
+That member did not silently rejoin. It still belonged to the old five-member configuration, while the recovered London side had moved to a different configuration.
+
+### Findings
+
+- `force: true` recomputed majority against the new member list.
+- A healthy process with intact data is not automatically entitled to rejoin after it has been removed from the authoritative replica-set configuration.
+- Forced reconfiguration is an administrative recovery mechanism, not normal failover.
+- It must not be used casually against members that are merely temporarily unreachable; doing so can create conflicting replica-set histories when the other side returns.
+
+**Talk-safe conclusion:** use forced reconfiguration only when you have established which surviving side is authoritative and normal majority-based recovery is not available. The experiment demonstrates recovery from majority loss; it is not a recommendation to bypass quorum during routine outages.
+
+---
+
 ## Experimental decisions and caveats worth preserving
 
 ### Organic latency instead of synthetic delay
@@ -503,19 +549,6 @@ This is intentional evidence discipline: anomalous data should be marked, not si
 
 ---
 
-## Planned extensions
+## Scope boundary: disaster recovery
 
-### `REC-01` — recover after majority loss
-
-Planned 2+3 experiment. Preserve the same evidence standard:
-
-1. healthy `rs.conf()` / `rs.status()`
-2. loss of the three-member region
-3. proof that 2/5 cannot elect a writable primary
-4. exact recovery/reconfiguration action
-5. data-safety implications
-6. recovered topology and client validation
-
-### `DR-01` — disaster recovery when HA is insufficient
-
-Planned backup/PITR restore exercise. Keep the evidence distinct from normal replica-set failover and record the restore source, procedure, validation, observed RTO and resulting RPO only after a repeatable recovery test has been run.
+Backup/restore and point-in-time recovery are important when normal MongoDB high availability cannot recover the database. They are intentionally treated here as a **design and operational boundary**, not as an unfinished evidence experiment. The lab's measured catalogue is complete for the scenarios listed above; it does not claim a measured backup/PITR RTO or RPO that was not tested.
