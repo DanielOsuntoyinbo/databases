@@ -19,3 +19,4 @@ infrastructure/ansible/inventory/group_vars/all/vault.yml.dec
 __pycache__/
 *.pyc
 .DS_Store
+infrastructure/ansible/inventory/hosts-*-scoped.yml
