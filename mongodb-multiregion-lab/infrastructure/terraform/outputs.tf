@@ -41,119 +41,119 @@ output "tgw_route_table_ids" {
 output "peering_attachment_ids" {
   value = {
     london_ireland = module.peering_london_ireland.peering_attachment_id
-    ireland_paris  = module.peering_ireland_paris.peering_attachment_id
-    london_paris   = module.peering_london_paris.peering_attachment_id
+    ireland_paris   = module.peering_ireland_paris.peering_attachment_id
+    london_paris    = module.peering_london_paris.peering_attachment_id
   }
 }
 
 output "replicaset_public_ips" {
   value = {
-    london  = module.replicaset_london.public_ips
-    ireland = module.replicaset_ireland.public_ips
-    paris   = module.replicaset_paris.public_ips
+    london  = try(module.replicaset_london.public_ips, null)
+    ireland = try(module.replicaset_ireland.public_ips, null)
+    paris   = try(module.replicaset_paris.public_ips, null)
   }
 }
 
 output "replicaset_private_ips" {
   value = {
-    london  = module.replicaset_london.private_ips
-    ireland = module.replicaset_ireland.private_ips
-    paris   = module.replicaset_paris.private_ips
+    london  = try(module.replicaset_london.private_ips, null)
+    ireland = try(module.replicaset_ireland.private_ips, null)
+    paris   = try(module.replicaset_paris.private_ips, null)
   }
 }
 
 output "arbiter_public_ip" {
-  value = module.arbiter_paris.public_ips[0]
+  value = try(module.arbiter_paris.public_ips[0], null)
 }
 
 output "arbiter_private_ip" {
-  value = module.arbiter_paris.private_ips[0]
+  value = try(module.arbiter_paris.private_ips[0], null)
 }
 
 output "london_2_public_ip" {
-  value = module.replicaset_london_2.public_ips[0]
+  value = try(module.replicaset_london_2.public_ips[0], null)
 }
 
 output "london_2_private_ip" {
-  value = module.replicaset_london_2.private_ips[0]
+  value = try(module.replicaset_london_2.private_ips[0], null)
 }
 
 output "ireland_2_public_ip" {
-  value = module.replicaset_ireland_2.public_ips[0]
+  value = try(module.replicaset_ireland_2.public_ips[0], null)
 }
 
 output "ireland_2_private_ip" {
-  value = module.replicaset_ireland_2.private_ips[0]
+  value = try(module.replicaset_ireland_2.private_ips[0], null)
 }
 
 output "ireland_3_public_ip" {
-  value = module.replicaset_ireland_3.public_ips[0]
+  value = try(module.replicaset_ireland_3.public_ips[0], null)
 }
 
 output "ireland_3_private_ip" {
-  value = module.replicaset_ireland_3.private_ips[0]
+  value = try(module.replicaset_ireland_3.private_ips[0], null)
 }
 
 output "multiaz_public_ips" {
   value = {
-    multiaz_1 = module.multiaz_1.public_ips[0]
-    multiaz_2 = module.multiaz_2.public_ips[0]
-    multiaz_3 = module.multiaz_3.public_ips[0]
+    multiaz_1 = try(module.multiaz_1.public_ips[0], null)
+    multiaz_2 = try(module.multiaz_2.public_ips[0], null)
+    multiaz_3 = try(module.multiaz_3.public_ips[0], null)
   }
 }
 
 output "multiaz_private_ips" {
   value = {
-    multiaz_1 = module.multiaz_1.private_ips[0]
-    multiaz_2 = module.multiaz_2.private_ips[0]
-    multiaz_3 = module.multiaz_3.private_ips[0]
+    multiaz_1 = try(module.multiaz_1.private_ips[0], null)
+    multiaz_2 = try(module.multiaz_2.private_ips[0], null)
+    multiaz_3 = try(module.multiaz_3.private_ips[0], null)
   }
 }
 
 output "configsvr_public_ips" {
   value = {
-    london  = module.configsvr_london.public_ips[0]
-    ireland = module.configsvr_ireland.public_ips[0]
-    paris   = module.configsvr_paris.public_ips[0]
+    london  = try(module.configsvr_london.public_ips[0], null)
+    ireland = try(module.configsvr_ireland.public_ips[0], null)
+    paris   = try(module.configsvr_paris.public_ips[0], null)
   }
 }
 
 output "configsvr_private_ips" {
   value = {
-    london  = module.configsvr_london.private_ips[0]
-    ireland = module.configsvr_ireland.private_ips[0]
-    paris   = module.configsvr_paris.private_ips[0]
+    london  = try(module.configsvr_london.private_ips[0], null)
+    ireland = try(module.configsvr_ireland.private_ips[0], null)
+    paris   = try(module.configsvr_paris.private_ips[0], null)
   }
 }
 
 output "shard1_public_ips" {
   value = {
-    london  = module.shard1_london.public_ips[0]
-    ireland = module.shard1_ireland.public_ips[0]
-    paris   = module.shard1_paris.public_ips[0]
+    london  = try(module.shard1_london.public_ips[0], null)
+    ireland = try(module.shard1_ireland.public_ips[0], null)
+    paris   = try(module.shard1_paris.public_ips[0], null)
   }
 }
 
 output "shard1_private_ips" {
   value = {
-    london  = module.shard1_london.private_ips[0]
-    ireland = module.shard1_ireland.private_ips[0]
-    paris   = module.shard1_paris.private_ips[0]
+    london  = try(module.shard1_london.private_ips[0], null)
+    ireland = try(module.shard1_ireland.private_ips[0], null)
+    paris   = try(module.shard1_paris.private_ips[0], null)
   }
 }
 
 output "mongos_public_ips" {
   value = {
-    london  = module.mongos_london.public_ips[0]
-    ireland = module.mongos_ireland.public_ips[0]
-    paris   = module.mongos_paris.public_ips[0]
+    london  = try(module.mongos_london.public_ips[0], null)
+    ireland = try(module.mongos_ireland.public_ips[0], null)
+    paris   = try(module.mongos_paris.public_ips[0], null)
   }
 }
 
 output "mongos_private_ips" {
   value = {
-    london  = module.mongos_london.private_ips[0]
-    ireland = module.mongos_ireland.private_ips[0]
-    paris   = module.mongos_paris.private_ips[0]
+    london  = try(module.mongos_london.private_ips[0], null)
+    ireland = try(module.mongos_ireland.private_ips[0], null)
+    paris   = try(module.mongos_paris.private_ips[0], null)
   }
 }

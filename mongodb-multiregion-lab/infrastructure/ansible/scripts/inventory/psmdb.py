@@ -45,6 +45,13 @@ def build_inventory(tf_out: dict) -> dict:
     all_hosts = {}
 
     for region, cfg in REGIONS.items():
+        # Skip regions that weren't provisioned this run (scoped/
+        # partial deployments — e.g. a test that only needs London +
+        # Ireland). public_ips[region] is None if that module's
+        # output couldn't be evaluated (module never applied).
+        if public_ips.get(region) is None or private_ips.get(region) is None:
+            continue
+
         hostname = f"psmdb-{region}-replicaset-1"
         public_ip = public_ips[region][0]
         private_ip = private_ips[region][0]
@@ -77,7 +84,7 @@ def build_inventory(tf_out: dict) -> dict:
     # Arbiter: standalone instance, own group, not part of the
     # "replicaset" group's initial rs.initiate() member set — it gets
     # added later via rs.addArb() as a deliberate, separate step.
-    if "arbiter_public_ip" in tf_out and "arbiter_private_ip" in tf_out:
+    if tf_out.get("arbiter_public_ip", {}).get("value") is not None and tf_out.get("arbiter_private_ip", {}).get("value") is not None:
         arbiter_hostname = "psmdb-paris-arbiter-1"
         inventory["all"]["children"]["arbiter"] = {
             "hosts": {
@@ -103,11 +110,13 @@ def build_inventory(tf_out: dict) -> dict:
     extra_hosts = {}
     for key, region in extra_nodes.items():
         pub_key, priv_key = f"{key}_public_ip", f"{key}_private_ip"
-        if pub_key in tf_out and priv_key in tf_out:
+        pub_val = tf_out.get(pub_key, {}).get("value")
+        priv_val = tf_out.get(priv_key, {}).get("value")
+        if pub_val is not None and priv_val is not None:
             hostname = f"psmdb-{key.replace('_', '-')}-replicaset-1"
             extra_hosts[hostname] = {
-                "ansible_host": tf_out[pub_key]["value"],
-                "private_ip": tf_out[priv_key]["value"],
+                "ansible_host": pub_val,
+                "private_ip": priv_val,
                 "region": region,
                 "psmdb_alias": f"psmdb-{key.replace('_', '-')}",
             }
@@ -117,22 +126,21 @@ def build_inventory(tf_out: dict) -> dict:
     # Multi-AZ comparison topology — entirely separate replica set,
     # 3 nodes all in London. Own group, own group_vars override
     # (psmdb_replset_name), own bootstrap play.
-    if "multiaz_public_ips" in tf_out and "multiaz_private_ips" in tf_out:
-        pub_ips = tf_out["multiaz_public_ips"]["value"]
-        priv_ips = tf_out["multiaz_private_ips"]["value"]
-        multiaz_hosts = {}
-        for key in ("multiaz_1", "multiaz_2", "multiaz_3"):
-            if key in pub_ips and key in priv_ips:
-                alias = key.replace("_", "-")
-                hostname = f"psmdb-{alias}-1"
-                multiaz_hosts[hostname] = {
-                    "ansible_host": pub_ips[key],
-                    "private_ip": priv_ips[key],
-                    "region": "london",
-                    "psmdb_alias": f"psmdb-{alias}",
-                }
-        if multiaz_hosts:
-            inventory["all"]["children"]["multiaz"] = {"hosts": multiaz_hosts}
+    multiaz_pub = tf_out.get("multiaz_public_ips", {}).get("value") or {}
+    multiaz_priv = tf_out.get("multiaz_private_ips", {}).get("value") or {}
+    multiaz_hosts = {}
+    for key in ("multiaz_1", "multiaz_2", "multiaz_3"):
+        if multiaz_pub.get(key) is not None and multiaz_priv.get(key) is not None:
+            alias = key.replace("_", "-")
+            hostname = f"psmdb-{alias}-1"
+            multiaz_hosts[hostname] = {
+                "ansible_host": multiaz_pub[key],
+                "private_ip": multiaz_priv[key],
+                "region": "london",
+                "psmdb_alias": f"psmdb-{alias}",
+            }
+    if multiaz_hosts:
+        inventory["all"]["children"]["multiaz"] = {"hosts": multiaz_hosts}
 
     # Sharded cluster: CSRS, shard1, mongos — each a region-tagged
     # trio, matching the main replica set's failure-domain pattern.
@@ -143,21 +151,20 @@ def build_inventory(tf_out: dict) -> dict:
     }
     for group_name, pub_key in sharding_groups.items():
         priv_key = pub_key.replace("public", "private")
-        if pub_key in tf_out and priv_key in tf_out:
-            pub_ips = tf_out[pub_key]["value"]
-            priv_ips = tf_out[priv_key]["value"]
-            group_hosts = {}
-            for region in ("london", "ireland", "paris"):
-                if region in pub_ips and region in priv_ips:
-                    hostname = f"psmdb-{group_name}-{region}-1"
-                    group_hosts[hostname] = {
-                        "ansible_host": pub_ips[region],
-                        "private_ip": priv_ips[region],
-                        "region": region,
-                        "psmdb_alias": f"psmdb-{group_name}-{region}",
-                    }
-            if group_hosts:
-                inventory["all"]["children"][group_name] = {"hosts": group_hosts}
+        pub_ips = tf_out.get(pub_key, {}).get("value") or {}
+        priv_ips = tf_out.get(priv_key, {}).get("value") or {}
+        group_hosts = {}
+        for region in ("london", "ireland", "paris"):
+            if pub_ips.get(region) is not None and priv_ips.get(region) is not None:
+                hostname = f"psmdb-{group_name}-{region}-1"
+                group_hosts[hostname] = {
+                    "ansible_host": pub_ips[region],
+                    "private_ip": priv_ips[region],
+                    "region": region,
+                    "psmdb_alias": f"psmdb-{group_name}-{region}",
+                }
+        if group_hosts:
+            inventory["all"]["children"][group_name] = {"hosts": group_hosts}
 
     return inventory
 
