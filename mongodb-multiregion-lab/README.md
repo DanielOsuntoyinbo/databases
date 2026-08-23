@@ -75,8 +75,11 @@ These IDs are intended to remain stable even if the conference deck changes.
 | `LAT-01` | Cross-region latency | What cost does geography add to reads and writes? |
 | `AZ-01` | Multi-AZ comparison | How does same-region placement differ from multi-region placement? |
 | `SH-01` | Sharded-cluster regional outage | What survives when one region loses `mongos`, CSRS, and shard members? |
-| `REC-01` | Recovering after majority loss | Planned: how can a badly placed replica set be recovered when the surviving side cannot form a majority? |
-| `DR-01` | Disaster recovery beyond HA | Planned: how do you recover when normal HA is no longer sufficient? |
+| `REC-01` | Recovering after majority loss | How can a badly placed replica set be recovered when the surviving side cannot form a majority? |
+
+### Disaster recovery scope
+
+Disaster recovery beyond MongoDB's normal high-availability mechanisms is treated as a **design boundary rather than a separate benchmark experiment** in this lab. Backup/restore and point-in-time recovery are recovery mechanisms for scenarios where normal HA cannot recover the database. The measured evidence here focuses on replica-set and sharded-cluster availability, quorum, failover, durability, topology placement and recovery behaviour.
 
 For the exact commands and current topology prerequisites for implemented experiments, use the [rebuild and test runbook](docs/02-rebuild-and-test-runbook.md). For measured results, use the [evidence log](docs/01-evidence-log.md). For the richer technical narrative behind those results, including detailed election timings, WiredTiger restart evidence, Multi-AZ benchmark tables, arbiter/write-concern nuance, `mongos` locality and the full sharded-outage proof, use the [detailed findings](docs/03-detailed-findings.md).
 
