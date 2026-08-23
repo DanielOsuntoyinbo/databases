@@ -25,7 +25,8 @@ PSMDB version for the recorded evidence: **7.0.39-21**.
 | `SH-01` Sharded regional outage | ✅ | Ireland outage across `mongos`, CSRS and shard1; client validation |
 | `SH-02` mongos regional locality | ✅ | local vs remote router latency, `w:1` and `w:"majority"` |
 | `REC-01` Recover after majority loss | ✅ | 2+3 forced reconfiguration, plus proof of irreversibility |
-| `DR-01` DR when HA is insufficient | ⬜ Planned | backup/PITR restore test not yet captured |
+
+Disaster recovery beyond normal MongoDB high availability is intentionally treated as a **design boundary rather than an evidence experiment** in this lab. Backup/restore and point-in-time recovery are relevant when HA cannot recover the database, but no unfinished DR scenario is represented in this evidence catalogue.
 
 ---
 
@@ -328,11 +329,3 @@ These rules keep the repository useful after the talk:
 4. **Separate election from durability.** A voting majority and a data acknowledgement are related but not identical concepts.
 5. **Capture recovery.** A resilience test is incomplete if it only records the failure and not the return to steady state.
 6. **Raw evidence wins.** Slides summarize; this log interprets; `evidence-raw/` is the underlying proof.
-
----
-
-## Planned evidence
-
-### `DR-01` — Disaster recovery when HA is insufficient
-
-Planned backup/PITR restore exercise. Keep this separate from replica-set failover. Capture the restore source, restore procedure, validation, measured RTO and resulting RPO only after a repeatable test exists.
