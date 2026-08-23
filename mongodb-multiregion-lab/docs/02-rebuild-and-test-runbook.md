@@ -366,15 +366,9 @@ Target topology: **London x2 + Ireland x3**, built as a dedicated scoped rebuild
 
 ---
 
-### `DR-01` — Disaster recovery when HA is insufficient — planned
-
-This is not a completed lab scenario yet. It will cover backup/PITR-based service recovery separately from replica-set high availability, with measured RTO/RPO only after a repeatable restore test exists.
-
----
-
 ## Part D — Evidence capture standard
 
-For future experiments, prefer an experiment-oriented evidence directory/name rather than slide-oriented filenames. For example:
+For additional experiments, prefer an experiment-oriented evidence directory/name rather than slide-oriented filenames. For example:
 
 ```text
 evidence-raw/
@@ -387,7 +381,7 @@ evidence-raw/
     └── 06-client-validation.txt
 ```
 
-Existing evidence does not need to be renamed just to satisfy this convention; preserve working references and apply the structure to new experiments first.
+Existing evidence does not need to be renamed just to satisfy this convention; preserve working references and apply the structure when adding experiments.
 
 ---
 
