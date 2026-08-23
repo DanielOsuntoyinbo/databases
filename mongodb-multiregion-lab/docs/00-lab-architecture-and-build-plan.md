@@ -124,8 +124,9 @@ Experiment IDs are permanent. Slide numbers are deliberately not embedded in sce
 | `READ-01` | Read preference | How does read routing affect latency/load? | benchmark results |
 | `LAT-01` | Multi-region vs Multi-AZ latency | What cost does geography introduce? | measured latency/throughput |
 | `SH-01` | Sharded regional outage | Does the sharded service survive loss of one region? | CSRS/shard state + client result |
-| `REC-01` | Recover after majority loss | How can an already-unavailable replica set be recovered? | **Planned — evidence not yet captured** |
-| `DR-01` | Recover when HA is insufficient | How does backup/PITR-based disaster recovery differ from HA? | **Planned** |
+| `REC-01` | Recover after majority loss | How can an already-unavailable replica set be recovered? | forced reconfiguration + post-recovery validation |
+
+Disaster recovery beyond MongoDB's normal high-availability mechanisms is treated as a **design boundary rather than a benchmark experiment** in this lab. Backup/restore and point-in-time recovery are relevant when normal HA cannot recover the database, but they are not represented here as an unfinished experiment.
 
 The Percona Live deck maps to these IDs; the IDs do not depend on the deck.
 
@@ -174,9 +175,9 @@ The README can become conference-neutral after Percona Live without requiring th
 5. **Multi-AZ comparison** — isolate same-region versus cross-region effects.
 6. **Sharded cluster** — CSRS, shard replica set and regional `mongos` routers.
 7. **Evidence pass** — capture reproducible before/failure/result/recovery artifacts.
-8. **Recovery/DR extensions** — add `REC-01` and `DR-01` only after their tests are actually performed.
+8. **Majority-loss recovery** — run `REC-01` against the dedicated 2+3 topology and capture the forced-reconfiguration result.
 
-This order keeps the core replica-set experiments usable even while later scenarios are still being built.
+This order keeps the core replica-set experiments usable while allowing the recovery scenario to remain independently reproducible.
 
 ---
 
