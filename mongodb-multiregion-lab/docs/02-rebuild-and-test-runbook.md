@@ -82,7 +82,7 @@ cfg.members[2].host = "psmdb-shard1-paris:27017"
 rs.reconfig(cfg)
 ```
 
-The CSRS hostname switch was not part of the original evidence pass; it is optional for consistency.
+The CSRS hostname switch was not part of the original evidence pass; it is optional for consistency. Skipping this step on shard1 specifically caused `sh.addShard()` to fail in A7 — see the note there.
 
 ### A7. Register shard1
 
@@ -93,7 +93,7 @@ sh.addShard("psmdb-shard1/psmdb-shard1-london:27017,psmdb-shard1-ireland:27017,p
 sh.status()
 ```
 
-If `sh.addShard()` reports that a member does not belong to the replica set, complete A6 first.
+If `sh.addShard()` reports that a member does not belong to the replica set, complete A6 first — this is exactly what happened during the original build: the seed list used hostnames while the replica set's own config still held private IPs, and the error message named the mismatch directly.
 
 ### A8. Verify the base lab
 
@@ -151,7 +151,7 @@ rs.add({ host: "psmdb-ireland-3:27017", priority: 1, tags: { region: "ireland" }
 
 The result is **London x2 + Ireland x3**. Five votes is an odd total, but one failure domain holds the entire majority. `RS-04` demonstrates why member count alone is not the resilience model.
 
-> `REC-01` will reuse a 2+3-style topology for deliberate majority-loss recovery testing once that evidence has been captured. It is not documented as a completed experiment yet.
+`REC-01` reuses this same 2+3 shape, but as of that experiment it was built as an **independent, dedicated topology** rather than by extending the running main cluster — see the Appendix for why, and for the scoped-Terraform-build procedure that made it possible without provisioning the full lab.
 
 ---
 
@@ -164,7 +164,7 @@ Before every experiment:
 3. Capture a healthy `rs.status()` before the failure/action.
 4. Run the action.
 5. Capture the MongoDB state, relevant logs and client outcome.
-6. Restore the environment and verify the intended steady state.
+6. Restore the environment and verify the intended steady state — except `REC-01`, which is deliberately irreversible; see that section.
 
 ### `RS-01` — Primary failure and election
 
@@ -200,7 +200,7 @@ Restore the stopped member and confirm it rejoins and catches up.
 
 Use the baseline 1+1+1 topology. Stop the member in one region and inspect `rs.status()` plus a client write from the surviving service path.
 
-The expected design property is not “three regions are resilient”; it is **the surviving topology still has the required majority**.
+The expected design property is not "three regions are resilient"; it is **the surviving topology still has the required majority**.
 
 ---
 
@@ -314,24 +314,61 @@ Capture the client result and the surviving CSRS/shard states. Restore all Irela
 
 ---
 
-### `REC-01` — Recover after majority loss — planned
+### `SH-02` — mongos regional locality
 
-Target topology: 2+3.
+**Question:** does router choice matter, given a `mongos` holds no data of its own?
 
-This scenario is intentionally **not yet written as a procedure**. The test will be documented only after the majority-loss/reconfiguration experiment is performed and raw evidence is committed. The final runbook should capture:
+Run the benchmark from one region's `mongos` host, once against its own local router and once against a deliberately remote one — same client location both times, only the target changes:
 
-- healthy 2+3 configuration,
-- loss of the three-member region,
-- proof that 2/5 cannot elect a primary,
-- the exact recovery/reconfiguration procedure used,
-- data-safety implications,
-- recovered configuration and client result.
+```bash
+python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50 --duration 20 --uri "mongodb://localhost:27017/"
+python3 write_read_latency.py --op write --write-concern 1 --ramp 10,25,50 --duration 20 --uri "mongodb://psmdb-mongos-ireland:27017/"
+```
+
+Repeat both with `--write-concern majority` for a second data point. No `replicaSet=` parameter is needed — `mongos` is a single connection point, not itself a replica set member.
+
+Note which region currently holds shard1's primary before running this, since the result is directional (cost depends on router-to-primary distance, not router-to-router distance).
+
+---
+
+### `REC-01` — Recover after majority loss
+
+Target topology: **London x2 + Ireland x3**, built as a dedicated scoped rebuild (see Appendix) rather than by extending a running main cluster via Part B, since this experiment was run after a full teardown and only needed these 5 nodes.
+
+**This is deliberately irreversible — do not restore Ireland expecting a clean rejoin.** Unlike every other experiment in this runbook, the point of `REC-01` is to demonstrate MongoDB's recovery procedure for a *permanent* majority loss, and to show that the recovery is a one-way door.
+
+1. Capture a healthy baseline `rs.status()` on all 5 members.
+2. Stop all 3 Ireland members simultaneously:
+   ```bash
+   ssh psmdb-ireland "sudo systemctl stop mongod"
+   ssh psmdb-ireland-2 "sudo systemctl stop mongod"
+   ssh psmdb-ireland-3 "sudo systemctl stop mongod"
+   date -u
+   ```
+3. Confirm the lockout — same signature as `RS-04` (no writable primary, London's 2 votes short of the old config's 3-vote majority).
+4. Run the forced reconfiguration on a surviving member:
+   ```javascript
+   cfg = rs.conf()
+   cfg.members = cfg.members.filter(m => ["psmdb-london:27017", "psmdb-london-2:27017"].includes(m.host))
+   cfg.version += 1
+   rs.reconfig(cfg, { force: true })
+   ```
+5. Confirm recovery — a primary should be elected among the 2 survivors within seconds, and a `w:"majority"` write should succeed against the new (2-vote) majority.
+6. **Prove irreversibility** — restart one of the excluded Ireland members and connect to it directly:
+   ```javascript
+   rs.status()
+   // expect: MongoServerError[InvalidReplicaSetConfig]
+   ```
+   The excluded member is running and has its data, but cannot rejoin — it still holds the old config, which the survivors have moved on from.
+7. Tear down this scoped topology when done (`make destroy` against just these resources, or the full lab teardown if nothing else is running).
+
+**Safety note for anyone reusing this procedure:** only use `force: true` when the missing majority is confirmed permanently gone. If the "lost" nodes are only temporarily unreachable and come back while still holding the old config, forcing a reconfiguration first can produce genuine split-brain rather than the clean lockout demonstrated here.
 
 ---
 
 ### `DR-01` — Disaster recovery when HA is insufficient — planned
 
-This is also not a completed lab scenario yet. It will cover backup/PITR-based service recovery separately from replica-set high availability, with measured RTO/RPO only after a repeatable restore test exists.
+This is not a completed lab scenario yet. It will cover backup/PITR-based service recovery separately from replica-set high availability, with measured RTO/RPO only after a repeatable restore test exists.
 
 ---
 
@@ -351,6 +388,33 @@ evidence-raw/
 ```
 
 Existing evidence does not need to be renamed just to satisfy this convention; preserve working references and apply the structure to new experiments first.
+
+---
+
+## Appendix — Scoped rebuilds via `terraform -target`
+
+Some experiments (`REC-01`) don't need the full lab — just a handful of data-bearing nodes. `terraform -target` supports this, but has a real limitation worth knowing before it costs you time: **any output referencing a resource outside the targeted set is dropped from state entirely, not just that key** — and `try()` cannot rescue it, because the pruning happens at the plan-graph level, before `try()`'s runtime error-catching ever runs.
+
+**Symptom:** `terraform output <name>` returns `Error: Output "<name>" not found`, even immediately after a clean, successful `apply`.
+
+**Workaround:** read the actual values out of state instead of through outputs — the resource genuinely exists, only the output's evaluation was pruned:
+
+```bash
+terraform state show 'module.replicaset_london.aws_instance.node[0]' | grep -E "public_ip|private_ip"
+```
+
+Then hand-build a minimal static Ansible inventory from those values (bypassing `psmdb.py`, which depends on `terraform output -json`). Match the structure the target role expects — check the relevant role's tasks and template for exactly which hostvars and group structure are required (for the main `replicaset` role: `replicaset_member_id`, `replicaset_priority`, `region`, `private_ip`, plus a `region_<name>` child group for its `delegate_to` targets). Run directly against the hand-built file rather than through `make site` (which regenerates `hosts.yml` via `psmdb.py` and would overwrite it):
+
+```bash
+ansible-playbook -i inventory/hosts-<scenario>.yml playbooks/site.yml --ask-vault-pass
+```
+
+**A smaller, related gotcha:** after a full `make destroy` + rebuild, both `/etc/hosts` and `~/.ssh/known_hosts` on your workstation will still have stale entries under the *same hostnames*, pointing at the old, now-destroyed IPs/host keys. SSH will either silently try the dead IP first (a duplicate `/etc/hosts` line) or refuse to connect with a "REMOTE HOST IDENTIFICATION HAS CHANGED" warning — which is correct, since it genuinely did change. Fix both before troubleshooting anything else if a rebuilt node seems unreachable:
+
+```bash
+sudo sed -i '/psmdb-<name>/d' /etc/hosts   # remove ALL old lines first, then re-add fresh ones
+ssh-keygen -f ~/.ssh/known_hosts -R psmdb-<name>   # per hostname
+```
 
 ---
 

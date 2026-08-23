@@ -23,7 +23,8 @@ PSMDB version for the recorded evidence: **7.0.39-21**.
 | `READ-01` Read preference | ✅ | primary / primaryPreferred / secondaryPreferred benchmark |
 | `LAT-01` Multi-region vs Multi-AZ | ✅ | measured latency comparison |
 | `SH-01` Sharded regional outage | ✅ | Ireland outage across `mongos`, CSRS and shard1; client validation |
-| `REC-01` Recover after majority loss | ⬜ Planned | 2+3 majority-loss/reconfiguration test not yet captured |
+| `SH-02` mongos regional locality | ✅ | local vs remote router latency, `w:1` and `w:"majority"` |
+| `REC-01` Recover after majority loss | ✅ | 2+3 forced reconfiguration, plus proof of irreversibility |
 | `DR-01` DR when HA is insufficient | ⬜ Planned | backup/PITR restore test not yet captured |
 
 ---
@@ -191,7 +192,7 @@ When both members in one region were stopped, the surviving side had 2/4 votes. 
 
 An arbiter was added to the 2+2 data-bearing topology, creating five votes.
 
-The important result is narrower than “arbiter fixes the cluster”:
+The important result is narrower than "arbiter fixes the cluster":
 
 - the arbiter contributes an **election vote**,
 - it does **not** store another copy of the data,
@@ -199,7 +200,7 @@ The important result is narrower than “arbiter fixes the cluster”:
 
 The recorded `w:1` / `w:"majority"` test under the relevant outage is kept as evidence of that distinction.
 
-**Preferred terminology:** “add an arbiter to restore election majority,” not “arbiter fix.”
+**Preferred terminology:** "add an arbiter to restore election majority," not "arbiter fix."
 
 ---
 
@@ -209,7 +210,7 @@ Topology: London x2 + Ireland x3.
 
 This topology has five votes, but Ireland contains three of them. Removing Ireland therefore removes the replica-set majority even though London still has two healthy data-bearing members.
 
-**Finding:** “use an odd number of members” is incomplete guidance. What matters is **where the majority survives under the failure model you intend to tolerate**.
+**Finding:** "use an odd number of members" is incomplete guidance. What matters is **where the majority survives under the failure model you intend to tolerate**.
 
 ---
 
@@ -233,7 +234,87 @@ The regional-outage test stopped the Ireland `mongos`, Ireland CSRS member and I
 
 The recorded benchmark completed with **zero client errors** during the tested outage.
 
-**Talk-safe conclusion:** the regional failure was survived because the required MongoDB layers retained their own availability conditions and the client had a surviving routing path — not simply because the deployment was labelled “multi-region.”
+**Talk-safe conclusion:** the regional failure was survived because the required MongoDB layers retained their own availability conditions and the client had a surviving routing path — not simply because the deployment was labelled "multi-region."
+
+**Build note:** shard1's initial bootstrap addressed members by private IP rather than hostname (a normalization step that was missed for this one component). `sh.addShard()` surfaced the mismatch directly, with the seed list's hostnames not matching the replica set's own reported IP-based config — fixed with the same `rs.reconfig()` hostname-normalization pattern used elsewhere in the build (see runbook A6). Worth keeping as an example of the cluster catching its own misconfiguration rather than failing silently.
+
+---
+
+## `SH-02` — mongos regional locality
+
+**Question:** does it matter which region's `mongos` an application talks to, given that a router itself holds no data?
+
+Method: benchmark client colocated on London's `mongos` host, targeting `localhost:27017` (local router) versus `psmdb-mongos-ireland:27017` (a deliberately remote router) — same client location both times, isolating router choice as the only variable. `shard1`'s primary was in London for this test.
+
+### `w:1`
+
+| target | concurrency | ops/sec | p50 ms |
+|---|---:|---:|---:|
+| local | 10 | 2605.7 | 3.36 |
+| local | 25 | 2508.9 | 8.53 |
+| local | 50 | 2107.3 | 18.65 |
+| remote | 10 | 415.9 | 23.24 |
+| remote | 25 | 1052.7 | 23.12 |
+| remote | 50 | 2084.8 | 23.07 |
+
+### `w:"majority"`
+
+| target | concurrency | ops/sec | p50 ms |
+|---|---:|---:|---:|
+| local | 10 | 462.6 | 20.57 |
+| local | 25 | 1161.1 | 20.77 |
+| local | 50 | 1908.6 | 24.61 |
+| remote | 10 | 217.9 | 44.88 |
+| remote | 25 | 553.8 | 44.36 |
+| remote | 50 | 1081.3 | 44.15 |
+
+### Findings
+
+- Remote-router latency floor was roughly double the local-router floor in both write-concern modes — consistent with paying the cross-region network hop twice: client→remote router, then router→shard primary.
+- Remote latency stayed essentially flat across concurrency 10–50; local latency rose with load. At this scale the fixed double-hop network cost dominated over any local queueing effect.
+- `w:"majority"` added a broadly similar offset to both local and remote floors (shard1's own replication-wait cost), which did not change the local-vs-remote relationship — that cost is shard-internal, not router-related.
+
+**Talk-safe conclusion:** a `mongos` router's location is not incidental. An application talking to a nearby router avoids paying network cost twice; this is a real, measurable design consideration for regional application placement, not just a topology diagram detail.
+
+---
+
+## `REC-01` — Recover after majority loss
+
+Topology: **London x2 + Ireland x3** (5 votes, 3 held by Ireland), built as a dedicated scoped rebuild rather than extending the main baseline cluster (see runbook Appendix for why, and the Terraform limitation that shaped that decision).
+
+**This scenario is deliberately different from every other outage test in this log.** `RS-01`, `RS-03`, `RS-04` and `SH-01` are all reversible — stopped nodes always came back and the cluster self-healed. `REC-01` demonstrates MongoDB's documented recovery procedure (`rs.reconfig(cfg, { force: true })`) for when a majority is lost **permanently**, not just temporarily.
+
+**Baseline** (2026-08-23, ~17:17 UTC): all 5 members healthy, London PRIMARY.
+
+**Outage** — all 3 Ireland members stopped simultaneously, 17:19:28 UTC. Same lockout signature as `RS-04`: London's 2 votes cannot reach the 3-vote majority of the *existing* 5-member config; no writable primary.
+
+**Forced recovery** — run directly on a surviving member, declaring a new, smaller config consisting only of the survivors:
+
+```javascript
+cfg = rs.conf()
+cfg.members = cfg.members.filter(m => ["psmdb-london:27017", "psmdb-london-2:27017"].includes(m.host))
+cfg.version += 1
+rs.reconfig(cfg, { force: true })
+```
+
+**Result:** new majority correctly recognized (`majorityVoteCount: 2, votingMembersCount: 2` — not 3-of-5), a primary elected among the two survivors (`electionTimeout`, term 2), and a `w:"majority"` write succeeded immediately afterward (`replLag: 0 secs` between the two survivors).
+
+**The critical follow-up — proving this is genuinely irreversible.** The stopped Ireland member was restarted (data intact, process healthy) and connected to directly:
+
+```javascript
+rs.status()
+// MongoServerError[InvalidReplicaSetConfig]: Our replica set config is invalid or we are not a member of it
+```
+
+Ireland is running, has its data, and is **permanently excluded** — it still holds the old 5-member config, which no longer exists from the survivors' perspective. There is no automatic path back in.
+
+**Findings:**
+
+- `force: true` correctly recomputes majority against the *new*, smaller member list, not the old one.
+- The excluded member does not silently rejoin or cause conflict on its own — it is simply locked out, reporting an explicit, unambiguous error.
+- This is the tool's real safety property: a returning node that still believes in the old config cannot force its way back in and cause disagreement by itself.
+
+**Talk-safe conclusion:** `force: true` is correct only when the missing majority is genuinely, permanently gone — a confirmed disaster, not a network blip expected to heal. If it is used prematurely against a majority that later turns out to be only temporarily unreachable, the returning nodes and the forcibly reconfigured survivors can end up holding two different, conflicting versions of the replica set's history — genuine split-brain, not just an inconvenience like the lockout demonstrated here. This is disaster recovery for confirmed disasters, not a routine outage response.
 
 ---
 
@@ -251,10 +332,6 @@ These rules keep the repository useful after the talk:
 ---
 
 ## Planned evidence
-
-### `REC-01` — Recover after majority loss
-
-Planned 2+3 test. Do not add a recovery procedure or claim until the experiment is run. Capture the healthy configuration, majority loss, inability to elect, exact reconfiguration/recovery action, data-safety implications, recovered state and client validation.
 
 ### `DR-01` — Disaster recovery when HA is insufficient
 
