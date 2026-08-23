@@ -1,10 +1,10 @@
 # MongoDB Multi-Region Resilience Lab
 
-**The hands-on lab behind my Percona Live 2026 session.**
+**The hands-on lab supporting the Percona Live 2026 session.**
 
 Build it. Break it. Measure it. Recover it.
 
-This repository contains the AWS infrastructure, MongoDB topologies, failure experiments, and captured evidence used to explore multi-region resilience in the talk. The lab is intentionally reusable beyond the conference: the infrastructure, runbooks, scenarios, and evidence are organised around MongoDB resilience concepts rather than slide numbers.
+This repository contains the AWS infrastructure, MongoDB topologies, failure experiments, and captured evidence used to explore multi-region resilience in the conference session. The lab is intentionally reusable beyond the conference: the infrastructure, runbooks, scenarios, and evidence are organised around MongoDB resilience concepts rather than slide numbers.
 
 > **Implementation:** Percona Server for MongoDB (PSMDB) on AWS. The current lab pins PSMDB **7.0.39-21**.
 
@@ -32,9 +32,9 @@ The environment is used to answer practical questions such as:
 
 ## Start here
 
-Choose the path that matches what you want to do:
+Choose the path that matches the intended use:
 
-| I want to... | Go to |
+| Goal | Go to |
 |---|---|
 | Understand the architecture and why it was built this way | [`docs/00-lab-architecture-and-build-plan.md`](docs/00-lab-architecture-and-build-plan.md) |
 | See the concise measured results from the experiments | [`docs/01-evidence-log.md`](docs/01-evidence-log.md) |
@@ -103,7 +103,7 @@ make apply
 make site
 ```
 
-Additional deployment and manual replay steps are documented in [`docs/02-rebuild-and-test-runbook.md`](docs/02-rebuild-and-test-runbook.md). Do not assume `make apply` + `make site` reproduces every experimental topology: some topology changes are intentionally replayed through `mongosh` and are documented explicitly in the runbook.
+Additional deployment and manual replay steps are documented in [`docs/02-rebuild-and-test-runbook.md`](docs/02-rebuild-and-test-runbook.md). `make apply` + `make site` does not reproduce every experimental topology automatically: some topology changes are intentionally replayed through `mongosh` and are documented explicitly in the runbook.
 
 ### Tear down when finished
 
@@ -111,13 +111,13 @@ Additional deployment and manual replay steps are documented in [`docs/02-rebuil
 make destroy
 ```
 
-The lab spans multiple regions and uses resources such as Transit Gateway attachments and EC2 instances that incur cost while running. Tear the environment down between working sessions when it is not needed.
+The lab spans multiple regions and uses resources such as Transit Gateway attachments and EC2 instances that incur cost while running. The environment should be torn down between working sessions when it is not needed.
 
 ## Evidence-first approach
 
 The goal of the lab is not simply to show a topology diagram. Each important claim should be backed by an experiment and observable output.
 
-For a typical scenario, capture:
+A typical scenario captures:
 
 1. the topology before failure (`rs.conf()` / `rs.status()`),
 2. the failure action and timestamp,
@@ -125,13 +125,13 @@ For a typical scenario, capture:
 4. application/write behaviour where relevant,
 5. the recovered state after services return.
 
-The documentation intentionally has two evidence layers: the concise evidence log makes the results easy to scan, while the detailed findings preserve the richer investigative context instead of throwing it away. `evidence-raw/` remains the underlying source for checking the claims.
+The documentation intentionally has two evidence layers: the concise evidence log makes the results easy to scan, while the detailed findings preserve the richer investigative context. `evidence-raw/` remains the underlying source for checking the claims.
 
 That makes the material useful in three ways: **learn the concept → reproduce the failure → inspect the evidence**.
 
 ## Percona Live 2026
 
-For the talk, the experiments are presented in roughly the same learning sequence as the session: failure domains → elections and majority → topology placement → write concern and latency → arbiters → sharded-cluster resilience → recovery.
+For the conference session, the experiments are presented in roughly the same learning sequence as the repository: failure domains → elections and majority → topology placement → write concern and latency → arbiters → sharded-cluster resilience → recovery.
 
 The experiment IDs above are deliberately independent of slide numbers. This keeps the repository useful as the presentation evolves and after the conference is over.
 
@@ -154,10 +154,10 @@ mongodb-multiregion-lab/
 
 ## Reproducibility note
 
-Infrastructure and baseline configuration are automated. Some experimental topology changes were performed manually during the original testing and are replayed through documented `mongosh` steps. Where automation does not yet reproduce a state end-to-end, the runbook calls that out rather than implying otherwise.
+Infrastructure and baseline configuration are automated. Some experimental topology changes were performed manually during the original testing and are replayed through documented `mongosh` steps. Where automation does not reproduce a state end-to-end, the runbook calls that out rather than implying otherwise.
 
 ---
 
-**For conference attendees:** start with the [experiment guide](#experiment-guide), then open the evidence log for the scenario you want to inspect. Use the detailed findings when you want the deeper technical reasoning and exact measured context behind a slide.
+**Conference path:** start with the [experiment guide](#experiment-guide), then open the evidence log for the scenario being inspected. The detailed findings provide deeper technical reasoning and measured context behind the conference material.
 
-**For future lab work:** use the architecture document and runbook as the stable foundation, and add new scenarios/evidence without coupling them to presentation slide numbers.
+**Extending the lab:** the architecture document and runbook provide the stable foundation for adding new scenarios and evidence without coupling them to presentation slide numbers.
