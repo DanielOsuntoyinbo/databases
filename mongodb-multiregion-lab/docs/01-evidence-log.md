@@ -6,7 +6,7 @@ The Percona Live 2026 slides use selected results from this file, but the eviden
 
 PSMDB version for the recorded evidence: **7.0.39-21**.
 
-> Treat measured numbers as results from this lab environment, not universal MongoDB constants. The repeatable mechanism is usually more important than the exact timing.
+> Measured numbers in this document are results from this lab environment, not universal MongoDB constants. The repeatable mechanism is usually more important than the exact timing.
 
 ---
 
@@ -54,7 +54,7 @@ An early assumption was that London would need a manual election after restartin
 
 **Finding:** priority is not only an initial-election preference; an eligible higher-priority member can later trigger a priority takeover.
 
-Keeping this correction visible is useful: the evidence log records what the lab actually demonstrated rather than silently rewriting the original expectation.
+The correction is preserved because the evidence log records what the lab actually demonstrated rather than rewriting the original expectation.
 
 ---
 
@@ -67,13 +67,13 @@ Measured from the London PRIMARY through `rs.status()`:
 | London → Ireland | 9–11 ms |
 | London → Paris | 7–9 ms |
 
-No synthetic `tc netem` delay was used for the evidence selected for the talk. The measured AWS inter-region latency was sufficient to expose the write-concern and read-routing trade-offs.
+No synthetic `tc netem` delay was used for the evidence selected for the conference session. The measured AWS inter-region latency was sufficient to expose the write-concern and read-routing trade-offs.
 
 ---
 
 ## `WC-01` — `w:1` vs `w:"majority"`
 
-Method: `write_read_latency.py` from the London primary, 20 seconds per concurrency step. Running client and server on the same `t3.medium` is a known confound at high concurrency and should be stated when interpreting throughput.
+Method: `write_read_latency.py` from the London primary, 20 seconds per concurrency step. Running client and server on the same `t3.medium` is a known confound at high concurrency and should be considered when interpreting throughput.
 
 ### `w:"majority"`
 
@@ -98,10 +98,10 @@ Method: `write_read_latency.py` from the London primary, 20 seconds per concurre
 - At low concurrency, the measured p50 floor was ~3.6 ms for `w:1` versus ~18.2 ms for `w:"majority"`.
 - The gap is consistent with the additional cross-region acknowledgement path in this topology.
 - `w:"majority"` throughput plateaued around concurrency 50 on the test instance while latency continued rising.
-- `w:1` throughput declining at higher concurrency is partly confounded by the benchmark client sharing the same 2-vCPU host as `mongod`; do not present that behaviour as a general MongoDB rule.
+- The decline in `w:1` throughput at higher concurrency is partly confounded by the benchmark client sharing the same 2-vCPU host as `mongod`; it should not be interpreted as a general MongoDB behaviour.
 - All recorded runs completed with zero benchmark errors.
 
-**Talk-safe conclusion:** stronger acknowledgement across geography has a real latency cost; measure it in the topology you intend to operate.
+**Conclusion:** stronger acknowledgement across geography has a real latency cost; it should be measured in the topology being evaluated.
 
 ---
 
@@ -110,7 +110,7 @@ Method: `write_read_latency.py` from the London primary, 20 seconds per concurre
 Same benchmark harness, London primary.
 
 | mode | concurrency | ops/sec | p50 ms | p95 ms | p99 ms |
-|---|---:|---:|---:|---:|---:|
+|---|---:|---:|---:|---:|
 | primary | 10 | 2796.7 | 2.88 | 8.26 | 11.61 |
 | primary | 25 | 2642.5 | 7.19 | 22.35 | 32.17 |
 | primary | 50 | 2324.3 | 15.77 | 55.66 | 81.58 |
@@ -129,7 +129,7 @@ Same benchmark harness, London primary.
 - `primary` and `primaryPreferred` were nearly identical while the primary was healthy.
 - `secondaryPreferred` introduced a cross-region latency floor at low concurrency.
 - At concurrency 50, secondaryPreferred produced higher throughput in this lab, consistent with reads being moved away from the host also running the client workload.
-- The concurrency-10 `secondaryPreferred` result (960.1 ops/sec) does not follow the otherwise clean pattern and remains an unconfirmed startup/topology-discovery artefact. Do not cite it as a general finding without rerunning it.
+- The concurrency-10 `secondaryPreferred` result (960.1 ops/sec) does not follow the otherwise clean pattern and remains an unconfirmed startup/topology-discovery artefact. It is retained as an anomaly rather than used as a general finding.
 
 ---
 
@@ -175,7 +175,7 @@ London's restart also recorded `Startup from clean shutdown?: false` and WiredTi
 
 London later reclaimed PRIMARY via priority takeover. Both secondaries showed `replLag: 0 secs` at the recorded recovery check. No acknowledged `w:"majority"` data loss was observed in these tests.
 
-**Caveat:** these failover timings came from an idle lab. Use them to explain the mechanism and the measured run, not as an SLA prediction for a production workload.
+**Caveat:** these failover timings came from an idle lab. They demonstrate the mechanism and this measured run; they are not an SLA prediction for a production workload.
 
 ---
 
@@ -193,15 +193,13 @@ When both members in one region were stopped, the surviving side had 2/4 votes. 
 
 An arbiter was added to the 2+2 data-bearing topology, creating five votes.
 
-The important result is narrower than "arbiter fixes the cluster":
+The result separates election availability from data durability:
 
 - the arbiter contributes an **election vote**,
 - it does **not** store another copy of the data,
 - therefore election availability and data-bearing write acknowledgement must be reasoned about separately.
 
 The recorded `w:1` / `w:"majority"` test under the relevant outage is kept as evidence of that distinction.
-
-**Preferred terminology:** "add an arbiter to restore election majority," not "arbiter fix."
 
 ---
 
@@ -211,7 +209,7 @@ Topology: London x2 + Ireland x3.
 
 This topology has five votes, but Ireland contains three of them. Removing Ireland therefore removes the replica-set majority even though London still has two healthy data-bearing members.
 
-**Finding:** "use an odd number of members" is incomplete guidance. What matters is **where the majority survives under the failure model you intend to tolerate**.
+**Finding:** "use an odd number of members" is incomplete guidance. What matters is **where the majority survives under the failure model being designed for**.
 
 ---
 
@@ -219,7 +217,7 @@ This topology has five votes, but Ireland contains three of them. Removing Irela
 
 The lab also contains a three-member replica set within London for same-region comparison. Its purpose is to make the geography trade-off measurable using the same benchmark methodology rather than comparing unrelated systems.
 
-Use the raw/recorded Multi-AZ results when quoting exact values; the durable conclusion for the talk is that failure-domain distance affects acknowledgement and routing latency, so HA topology and performance requirements must be designed together.
+The recorded Multi-AZ values should be interpreted in the context of the same operation, write concern/read preference and concurrency used for the multi-region measurements. The durable conclusion is that failure-domain distance affects acknowledgement and routing latency, so HA topology and performance requirements must be designed together.
 
 ---
 
@@ -235,9 +233,9 @@ The regional-outage test stopped the Ireland `mongos`, Ireland CSRS member and I
 
 The recorded benchmark completed with **zero client errors** during the tested outage.
 
-**Talk-safe conclusion:** the regional failure was survived because the required MongoDB layers retained their own availability conditions and the client had a surviving routing path — not simply because the deployment was labelled "multi-region."
+**Conclusion:** the regional failure was survived because the required MongoDB layers retained their own availability conditions and the client had a surviving routing path — not simply because the deployment was labelled "multi-region."
 
-**Build note:** shard1's initial bootstrap addressed members by private IP rather than hostname (a normalization step that was missed for this one component). `sh.addShard()` surfaced the mismatch directly, with the seed list's hostnames not matching the replica set's own reported IP-based config — fixed with the same `rs.reconfig()` hostname-normalization pattern used elsewhere in the build (see runbook A6). Worth keeping as an example of the cluster catching its own misconfiguration rather than failing silently.
+**Build note:** shard1's initial bootstrap addressed members by private IP rather than hostname. `sh.addShard()` surfaced the mismatch directly because the seed-list hostnames did not match the replica set's own reported IP-based configuration. The issue was corrected with the same `rs.reconfig()` hostname-normalization pattern used elsewhere in the build (see runbook A6). This is retained as a reproducibility detail because MongoDB surfaced the configuration mismatch explicitly rather than failing silently.
 
 ---
 
@@ -275,15 +273,15 @@ Method: benchmark client colocated on London's `mongos` host, targeting `localho
 - Remote latency stayed essentially flat across concurrency 10–50; local latency rose with load. At this scale the fixed double-hop network cost dominated over any local queueing effect.
 - `w:"majority"` added a broadly similar offset to both local and remote floors (shard1's own replication-wait cost), which did not change the local-vs-remote relationship — that cost is shard-internal, not router-related.
 
-**Talk-safe conclusion:** a `mongos` router's location is not incidental. An application talking to a nearby router avoids paying network cost twice; this is a real, measurable design consideration for regional application placement, not just a topology diagram detail.
+**Conclusion:** a `mongos` router's location is not incidental. An application talking to a nearby router avoids paying network cost twice; this is a measurable design consideration for regional application placement.
 
 ---
 
 ## `REC-01` — Recover after majority loss
 
-Topology: **London x2 + Ireland x3** (5 votes, 3 held by Ireland), built as a dedicated scoped rebuild rather than extending the main baseline cluster (see runbook Appendix for why, and the Terraform limitation that shaped that decision).
+Topology: **London x2 + Ireland x3** (5 votes, 3 held by Ireland), built as a dedicated scoped rebuild rather than extending the main baseline cluster (see runbook Appendix for the scoped-build rationale and Terraform limitation).
 
-**This scenario is deliberately different from every other outage test in this log.** `RS-01`, `RS-03`, `RS-04` and `SH-01` are all reversible — stopped nodes always came back and the cluster self-healed. `REC-01` demonstrates MongoDB's documented recovery procedure (`rs.reconfig(cfg, { force: true })`) for when a majority is lost **permanently**, not just temporarily.
+This scenario is deliberately different from the reversible outage tests in the log. `REC-01` demonstrates MongoDB's documented recovery procedure (`rs.reconfig(cfg, { force: true })`) for a majority loss treated as permanent rather than temporary.
 
 **Baseline** (2026-08-23, ~17:17 UTC): all 5 members healthy, London PRIMARY.
 
@@ -300,32 +298,32 @@ rs.reconfig(cfg, { force: true })
 
 **Result:** new majority correctly recognized (`majorityVoteCount: 2, votingMembersCount: 2` — not 3-of-5), a primary elected among the two survivors (`electionTimeout`, term 2), and a `w:"majority"` write succeeded immediately afterward (`replLag: 0 secs` between the two survivors).
 
-**The critical follow-up — proving this is genuinely irreversible.** The stopped Ireland member was restarted (data intact, process healthy) and connected to directly:
+**Returning excluded member:** the stopped Ireland member was restarted with its data intact and connected to directly:
 
 ```javascript
 rs.status()
 // MongoServerError[InvalidReplicaSetConfig]: Our replica set config is invalid or we are not a member of it
 ```
 
-Ireland is running, has its data, and is **permanently excluded** — it still holds the old 5-member config, which no longer exists from the survivors' perspective. There is no automatic path back in.
+The Ireland member was running and still had its data, but remained excluded because it held the old five-member configuration while the recovered side had moved to a different authoritative configuration. There was no automatic path back into the replica set.
 
 **Findings:**
 
-- `force: true` correctly recomputes majority against the *new*, smaller member list, not the old one.
-- The excluded member does not silently rejoin or cause conflict on its own — it is simply locked out, reporting an explicit, unambiguous error.
-- This is the tool's real safety property: a returning node that still believes in the old config cannot force its way back in and cause disagreement by itself.
+- `force: true` recomputes majority against the *new*, smaller member list, not the old one.
+- An excluded member does not silently rejoin or cause conflict on its own; it reports an explicit configuration error.
+- A returning node that still believes in the old configuration cannot independently force itself back into the new replica set.
 
-**Talk-safe conclusion:** `force: true` is correct only when the missing majority is genuinely, permanently gone — a confirmed disaster, not a network blip expected to heal. If it is used prematurely against a majority that later turns out to be only temporarily unreachable, the returning nodes and the forcibly reconfigured survivors can end up holding two different, conflicting versions of the replica set's history — genuine split-brain, not just an inconvenience like the lockout demonstrated here. This is disaster recovery for confirmed disasters, not a routine outage response.
+**Conclusion:** forced reconfiguration is an administrative recovery mechanism for situations where normal majority-based recovery is not available and the authoritative surviving side has been established. If it is used while the missing majority is only temporarily unreachable, the returning nodes and the forcibly reconfigured survivors can hold conflicting versions of replica-set history. It is therefore not a routine outage-response mechanism.
 
 ---
 
-## Evidence interpretation rules
+## Evidence interpretation principles
 
-These rules keep the repository useful after the talk:
+These principles keep the repository useful beyond the conference session:
 
-1. **Measured is not universal.** Keep exact timings tied to the environment/run that produced them.
-2. **Mechanism before number.** Explain why the state changed before emphasizing milliseconds.
-3. **Keep corrections.** If testing disproves an assumption, record the correction rather than rewriting history.
-4. **Separate election from durability.** A voting majority and a data acknowledgement are related but not identical concepts.
-5. **Capture recovery.** A resilience test is incomplete if it only records the failure and not the return to steady state.
-6. **Raw evidence wins.** Slides summarize; this log interprets; `evidence-raw/` is the underlying proof.
+1. **Measured is not universal.** Exact timings remain tied to the environment and run that produced them.
+2. **Mechanism before number.** The state transition and its cause matter more than a single millisecond value.
+3. **Corrections remain visible.** If testing disproves an assumption, the correction is recorded rather than silently rewriting the earlier expectation.
+4. **Election and durability are distinct.** A voting majority and a data acknowledgement are related but not identical concepts.
+5. **Recovery is part of the evidence.** A resilience test is incomplete if it records only the failure and not the resulting recovery or steady state.
+6. **Raw evidence is the source layer.** Slides summarize; this log interprets; `evidence-raw/` contains the underlying captures.
