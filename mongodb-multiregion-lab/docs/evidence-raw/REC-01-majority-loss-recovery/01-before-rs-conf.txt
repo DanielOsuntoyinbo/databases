@@ -1,0 +1,87 @@
+REC-01 — Recover after majority loss
+Topology: London x2 + Ireland x3 (dedicated scoped rebuild, no Paris/arbiter)
+
+Captured via: cfg = rs.conf()  (printed as part of the reconfiguration
+command sequence in 04-reconfiguration.txt, reproduced standalone here
+for the evidence-directory convention)
+
+{
+  _id: 'psmdb-multiregion-lab',
+  version: 2,
+  term: 1,
+  members: [
+    {
+      _id: 0,
+      host: 'psmdb-london:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 1,
+      host: 'psmdb-london-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 3,
+      tags: { region: 'london' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 2,
+      host: 'psmdb-ireland:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 3,
+      host: 'psmdb-ireland-2:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    },
+    {
+      _id: 4,
+      host: 'psmdb-ireland-3:27017',
+      arbiterOnly: false,
+      buildIndexes: true,
+      hidden: false,
+      priority: 2,
+      tags: { region: 'ireland' },
+      secondaryDelaySecs: Long('0'),
+      votes: 1
+    }
+  ],
+  protocolVersion: Long('1'),
+  writeConcernMajorityJournalDefault: true,
+  settings: {
+    chainingAllowed: true,
+    heartbeatIntervalMillis: 2000,
+    heartbeatTimeoutSecs: 10,
+    electionTimeoutMillis: 10000,
+    catchUpTimeoutMillis: -1,
+    catchUpTakeoverDelayMillis: 30000,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: 1, wtimeout: 0 },
+    replicaSetId: ObjectId('6a8b2740c3ee475abe35a155')
+  }
+}
+
+Voting members: 5. Majority: 3. Ireland holds 3 of 5 votes outright —
+the same region-majority anti-pattern shape as RS-04, used here as
+the starting point for a permanent-majority-loss recovery test rather
+than a temporary-outage demonstration.

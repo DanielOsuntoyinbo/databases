@@ -1,0 +1,14 @@
+REC-01 — before rs.status()
+Captured: 2026-08-23, ~17:17 UTC, immediately before the outage was
+triggered.
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+
+psmdb-london:27017    PRIMARY    1
+psmdb-london-2:27017  SECONDARY  1
+psmdb-ireland:27017   SECONDARY  1
+psmdb-ireland-2:27017 SECONDARY  1
+psmdb-ireland-3:27017 SECONDARY  1
+
+All 5 members healthy. London holding PRIMARY (priority 3, tied with
+London-2, but the elected leader at this point in the lab's history).

@@ -1,0 +1,71 @@
+REC-01 — recovered rs.status()
+Captured from psmdb-london-2 (the newly elected primary), full
+rs.status() output, ~17:28:52 UTC.
+
+{
+  set: 'psmdb-multiregion-lab',
+  date: ISODate('2026-08-23T17:28:52.283Z'),
+  myState: 1,
+  term: Long('2'),
+  majorityVoteCount: 2,
+  writeMajorityCount: 2,
+  votingMembersCount: 2,
+  writableVotingMembersCount: 2,
+  electionCandidateMetrics: {
+    lastElectionReason: 'electionTimeout',
+    lastElectionDate: ISODate('2026-08-23T17:27:33.210Z'),
+    electionTerm: Long('2'),
+    numVotesNeeded: 2,
+    priorityAtElection: 3,
+    electionTimeoutMillis: Long('10000'),
+    newTermStartDate: ISODate('2026-08-23T17:27:33.219Z'),
+    wMajorityWriteAvailabilityDate: ISODate('2026-08-23T17:27:33.735Z')
+  },
+  members: [
+    {
+      _id: 0,
+      name: 'psmdb-london:27017',
+      health: 1,
+      stateStr: 'SECONDARY',
+      syncSourceHost: 'psmdb-london-2:27017',
+      configVersion: 46531
+    },
+    {
+      _id: 1,
+      name: 'psmdb-london-2:27017',
+      health: 1,
+      stateStr: 'PRIMARY',
+      electionDate: ISODate('2026-08-23T17:27:33.000Z'),
+      configVersion: 46531,
+      self: true
+    }
+  ],
+  ok: 1
+}
+
+Key fields to note:
+- majorityVoteCount: 2, votingMembersCount: 2 — MongoDB has correctly
+  recomputed majority against the NEW 2-member config, not the old
+  5-member one. This is the entire point of the forced reconfig.
+- configVersion: 46531 on both members — much higher than the
+  cfg.version+1 value set manually (3). MongoDB internally
+  renumbers/reconciles config versions during a forced reconfig
+  beyond what the client sets; the exact number is not itself
+  significant, only that both surviving members agree on it.
+- electionReason: 'electionTimeout' — a normal election was needed to
+  pick a primary among the 2 survivors once the new config took
+  effect; the forced reconfig itself does not appoint a primary.
+
+--- Replication check ---
+
+rs.printSecondaryReplicationInfo()
+(run from psmdb-london-2, the primary)
+
+source: psmdb-london:27017
+{
+  syncedTo: 'Sun Aug 23 2026 17:29:13 GMT+0000 (Coordinated Universal Time)',
+  replLag: '0 secs (0 hrs) behind the primary '
+}
+
+Zero replication lag between the two survivors — clean, fully caught
+up 2-node cluster.

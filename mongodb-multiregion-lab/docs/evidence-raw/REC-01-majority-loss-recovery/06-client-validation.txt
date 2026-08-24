@@ -1,0 +1,50 @@
+REC-01 — client validation
+
+--- Part 1: write succeeds against the new majority ---
+
+Run from psmdb-london-2 (the new primary):
+
+db.getSiblingDB("benchmark").latency_test.insertOne(
+  {test: "post-force-reconfig"},
+  {writeConcern: {w: "majority", wtimeout: 5000}}
+)
+
+{
+  acknowledged: true,
+  insertedId: ObjectId('6a8b2df9198661b41aa6c422')
+}
+
+A w:"majority" write succeeded immediately, confirming the new
+2-member config's majority (2-of-2) is fully functional for both
+election and write-concern purposes — no further waiting or
+additional recovery steps needed.
+
+--- Part 2: proving irreversibility ---
+
+The stopped psmdb-ireland member was restarted:
+  sudo systemctl start mongod
+
+Process came up healthy (normal Ubuntu/mongod startup, no errors in
+system logs). Connected to it directly:
+
+ubuntu@psmdb-ireland:~$ mongosh --quiet -u psmdb_admin --authenticationDatabase admin --password
+test> rs.status()
+MongoServerError[InvalidReplicaSetConfig]: Our replica set config is invalid or we are not a member of it
+
+--- Analysis ---
+
+psmdb-ireland is running, has its full original dataset intact, and
+mongod itself is healthy — but it is permanently excluded from the
+cluster. It still holds config version 2 (the original 5-member
+config) and has no way to discover that the survivors moved on to a
+new config that doesn't include it. There is no automatic rejoin
+path; MongoDB does not attempt to reconcile this on its own.
+
+This is the concrete, working proof of the "one-way door" property
+described in the evidence log's REC-01 write-up: the recovery
+succeeded cleanly, and the excluded node fails safely (locked out
+with a clear error) rather than causing any conflict or confusion —
+but there genuinely is no going back for it without manual
+intervention (e.g., wiping its data directory and re-adding it as a
+brand new member via rs.add(), which was not performed as part of
+this test).

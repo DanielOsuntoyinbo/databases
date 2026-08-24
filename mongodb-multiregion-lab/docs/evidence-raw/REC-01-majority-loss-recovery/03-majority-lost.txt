@@ -1,0 +1,27 @@
+REC-01 — majority lost
+All 3 Ireland members (psmdb-ireland, psmdb-ireland-2, psmdb-ireland-3)
+stopped simultaneously.
+
+Command run on each:
+  sudo systemctl stop mongod
+Timestamp confirmed via `date -u` immediately after:
+  Sun Aug 23 17:19:28 UTC 2026
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+(run from psmdb-london)
+
+psmdb-london:27017     SECONDARY               1
+psmdb-london-2:27017   SECONDARY               1
+psmdb-ireland:27017    (not reachable/healthy)  0
+psmdb-ireland-2:27017  (not reachable/healthy)  0
+psmdb-ireland-3:27017  (not reachable/healthy)  0
+
+London stepped down from PRIMARY — with only 2 of 5 configured votes
+reachable, it cannot maintain the 3-vote majority the existing config
+requires. Same lockout signature as RS-03/RS-04: no writable primary
+anywhere in the set, mongosh prompt itself shows "[direct: secondary]".
+
+No write attempt was made against this specific config state (the
+w:1/w:majority write-concern distinction was already evidenced in
+RS-05; this experiment's point is the reconfiguration procedure
+itself, not re-proving write-unavailability).

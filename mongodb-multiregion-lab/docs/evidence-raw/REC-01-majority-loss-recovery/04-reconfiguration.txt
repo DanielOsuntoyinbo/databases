@@ -1,0 +1,50 @@
+REC-01 — the reconfiguration
+Run directly on psmdb-london (a surviving member, not the eventual
+new primary — force:true does not require running it on any
+particular node).
+
+--- Command sequence ---
+
+cfg = rs.conf()
+cfg.members = cfg.members.filter(m => ["psmdb-london:27017", "psmdb-london-2:27017"].includes(m.host))
+cfg.version += 1
+rs.reconfig(cfg, { force: true })
+
+--- Result ---
+
+{
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1787505578, i: 1 }),
+    signature: {
+      hash: Binary.createFromBase64('SV1uJ/Z9US8TZXwxGokTssMjYts=', 0),
+      keyId: Long('7677273188564205573')
+    }
+  },
+  operationTime: Timestamp({ t: 1787505578, i: 1 })
+}
+
+Config version bumped from 2 to 3. New member list contains only the
+2 London survivors; all 3 Ireland entries removed from the config
+entirely (not marked down, removed — this is the key mechanical
+difference from a normal outage, where members stay in the config
+and are simply unreachable).
+
+--- Immediate follow-up check ---
+
+rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))
+
+psmdb-london:27017    SECONDARY  1
+psmdb-london-2:27017  PRIMARY    1
+
+Note: this check was run from the psmdb-london session, which was
+itself SECONDARY at this point. A subsequent write attempt from that
+same session against SECONDARY correctly failed:
+
+db.getSiblingDB("benchmark").latency_test.insertOne({test: "post-force-reconfig"}, {writeConcern: {w: "majority", wtimeout: 5000}})
+MongoServerError[NotWritablePrimary]: not primary
+
+This is expected, correct behavior, not a bug in the reconfiguration —
+kept as an honest artifact of the actual operator session rather than
+edited out. The real validation was performed against the new
+primary directly; see 06-client-validation.txt.
