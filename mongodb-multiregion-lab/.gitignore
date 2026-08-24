@@ -12,7 +12,9 @@ infrastructure/terraform/terraform.tfvars
 infrastructure/ansible/inventory/hosts.yml
 *.retry
 
-# Never commit an unencrypted vault, even accidentally
+# Ansible vault — keep the real encrypted/local vault out of the public repo.
+# Commit only vault.yml.example.
+infrastructure/ansible/inventory/group_vars/all/vault.yml
 infrastructure/ansible/inventory/group_vars/all/vault.yml.dec
 
 # Python / misc
