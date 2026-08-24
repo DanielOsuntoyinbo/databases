@@ -1,6 +1,6 @@
 # MongoDB Multi-Region Resilience Lab — Detailed Findings
 
-This document preserves the **richer forensic detail** behind the concise experiment-led evidence log.
+This document preserves the **richer detail** behind the concise experiment-led evidence log.
 
 Use the documents together:
 
