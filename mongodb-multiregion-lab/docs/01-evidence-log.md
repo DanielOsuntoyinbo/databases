@@ -50,11 +50,11 @@ Members use region-readable hostnames through the lab's `/etc/hosts` alias layer
 
 ### Observed priority takeover
 
-An early assumption was that London would need a manual election after restarting as a SECONDARY. The evidence disproved that assumption: after catching up, MongoDB initiated a `priorityTakeover` and returned PRIMARY to the higher-priority London member.
+After London restarted and caught up as a SECONDARY, MongoDB initiated a priorityTakeover and returned PRIMARY to the higher-priority London member.
 
-**Finding:** priority is not only an initial-election preference; an eligible higher-priority member can later trigger a priority takeover.
+** Finding ** : an eligible higher-priority member can trigger a priority takeover once it is sufficiently caught up and able to become PRIMARY.
 
-The correction is preserved because the evidence log records what the lab actually demonstrated rather than rewriting the original expectation.
+This observation is included as part of the measured failover-and-recovery sequence for the lab.
 
 ---
 
