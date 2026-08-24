@@ -6,6 +6,7 @@ The lab currently supports the Percona Live 2026 talk, but the architecture and 
 
 - **How to rebuild and run experiments:** `02-rebuild-and-test-runbook.md`
 - **Measured results:** `01-evidence-log.md`
+- **Detailed findings:** `03-detailed-findings.md`
 - **Raw captures:** `evidence-raw/`
 
 Percona Server for MongoDB (PSMDB) is used to provide direct access to replica-set configuration, logs, elections and sharded-cluster behaviour.
@@ -83,7 +84,7 @@ Members are tagged by region so the failure-domain mapping is visible in `rs.con
 
 The baseline deliberately has **no arbiter**. Arbiter behaviour is introduced only for the relevant experiment so it can be compared with data-bearing voting members.
 
-This topology is the starting point for the `RS-*`, `WC-*` and `LAT-*` experiments.
+This topology is the starting point for the `RS-*`, `WC-*`, `READ-*` and `LAT-*` experiments.
 
 ---
 
@@ -95,7 +96,7 @@ The sharded lab applies the same replica-set reasoning to each MongoDB layer:
 - **Shard 1 replica set:** 3 members, one per region.
 - **`mongos`:** 3 routers, one per region.
 
-The purpose is not to demonstrate every sharding feature. It is to test whether the **sharded service path** remains usable when a region is unavailable and the CSRS and shard replica sets still preserve majority.
+The purpose is not to demonstrate every sharding feature. It is to test whether the **sharded service path** remains usable when a region is unavailable and the CSRS and shard replica sets still preserve majority, and to measure the effect of router locality.
 
 Zone sharding and geo-pinned chunk placement are intentionally outside the current talk scope.
 
@@ -124,6 +125,7 @@ Experiment IDs are permanent. Slide numbers are deliberately not embedded in sce
 | `READ-01` | Read preference | How does read routing affect latency/load? | benchmark results |
 | `LAT-01` | Multi-region vs Multi-AZ latency | What cost does geography introduce? | measured latency/throughput |
 | `SH-01` | Sharded regional outage | Does the sharded service survive loss of one region? | CSRS/shard state + client result |
+| `SH-02` | `mongos` regional locality | What latency cost appears when a client uses a remote router? | local-vs-remote router benchmark |
 | `REC-01` | Recover after majority loss | How can an already-unavailable replica set be recovered? | forced reconfiguration + post-recovery validation |
 
 Disaster recovery beyond MongoDB's normal high-availability mechanisms is treated as a **design boundary rather than a benchmark experiment** in this lab. Backup/restore and point-in-time recovery are relevant when normal HA cannot recover the database, but they are not represented here as an unfinished experiment.
@@ -139,9 +141,9 @@ For each experiment, the evidence model preserves four things:
 1. **Before** — topology/configuration and healthy state.
 2. **Failure/action** — exactly what was stopped, changed or measured.
 3. **Observed result** — MongoDB state, client outcome and relevant logs.
-4. **Recovery** — how the service returned to the intended steady state.
+4. **Recovery** — how the service returned to the intended steady state, or the resulting authoritative state for an intentionally irreversible recovery experiment.
 
-`01-evidence-log.md` interprets the results. `evidence-raw/` preserves the underlying captures so claims can be checked rather than accepted from the slides alone.
+`01-evidence-log.md` interprets the results. `03-detailed-findings.md` preserves deeper context. `evidence-raw/` preserves the underlying captures so claims can be checked rather than accepted from the slides alone.
 
 ---
 
@@ -158,7 +160,8 @@ mongodb-multiregion-lab/
 │   ├── 00-lab-architecture-and-build-plan.md   # why / what
 │   ├── 01-evidence-log.md                      # what happened
 │   ├── 02-rebuild-and-test-runbook.md          # how
-│   └── evidence-raw/                            # proof
+│   ├── 03-detailed-findings.md                 # deeper analysis
+│   └── evidence-raw/                            # source evidence
 └── write_read_latency.py
 ```
 
