@@ -73,11 +73,11 @@ WiredTiger recovery took approximately **215 ms** in this idle run:
 
 This was small because the cluster was nearly idle at crash time. It should **not** be interpreted as a production recovery expectation: a busier system can have more work to recover.
 
-### Priority-takeover correction
+### Priority takeover observation
 
-The lab originally assumed London might need a manual election to become PRIMARY again after restart. Testing disproved that assumption: after catching up, the higher-priority London member triggered `priorityTakeover` and reclaimed PRIMARY automatically.
+After London restarted and caught up as a SECONDARY, the higher-priority London member triggered `priorityTakeover` and reclaimed PRIMARY automatically.
 
-That correction is deliberately preserved because the evidence is more useful when it records what the lab actually demonstrated rather than rewriting the original expectation.
+**Finding:** an eligible higher-priority member can trigger a priority takeover once it is sufficiently caught up and able to become PRIMARY. This observation forms part of the measured failover-and-recovery sequence for the lab.
 
 ### RPO observation and caveat
 
@@ -483,6 +483,8 @@ All three Ireland services were restarted. Subsequent CSRS and shard1 status sho
 ---
 
 ## `REC-01` — recover after majority loss: completed recovery proof
+
+Raw evidence: `docs/evidence-raw/REC-01-majority-loss-recovery/`.
 
 Topology: **London x2 + Ireland x3**. Ireland held three of the five votes, so losing all three Ireland members left London with two healthy data-bearing members but no majority under the existing configuration.
 
