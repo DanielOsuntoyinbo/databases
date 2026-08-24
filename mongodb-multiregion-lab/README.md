@@ -27,8 +27,10 @@ The environment is used to answer practical questions such as:
 - What changes between `w:1` and `w: "majority"` across regions?
 - What does an arbiter solve, and what does it not solve?
 - How much latency does cross-region durability introduce?
+- How does read routing affect latency and workload placement?
 - How do the same replica-set principles apply to a sharded cluster?
-- How does the service recover when a failed region returns?
+- What cost does a remote `mongos` introduce?
+- How can the service recover after majority loss when normal HA is no longer available?
 
 ## Start here
 
@@ -72,10 +74,11 @@ These IDs are intended to remain stable even if the conference deck changes.
 | `RS-04` | Majority concentrated in one region | Why is an odd member count not enough by itself? |
 | `RS-05` | Arbiter and election majority | What does an arbiter change about elections and durability? |
 | `WC-01` | `w:1` vs `w: "majority"` | What acknowledgement and latency trade-offs appear across regions? |
-| `LAT-01` | Cross-region latency | What cost does geography add to reads and writes? |
-| `AZ-01` | Multi-AZ comparison | How does same-region placement differ from multi-region placement? |
+| `READ-01` | Read preference | How does read routing affect latency and workload placement? |
+| `LAT-01` | Multi-region vs Multi-AZ | How does same-region placement differ from multi-region placement? |
 | `SH-01` | Sharded-cluster regional outage | What survives when one region loses `mongos`, CSRS, and shard members? |
-| `REC-01` | Recovering after majority loss | How can a badly placed replica set be recovered when the surviving side cannot form a majority? |
+| `SH-02` | `mongos` regional locality | What latency cost appears when a client uses a remote router? |
+| `REC-01` | Recovering after majority loss | How can a replica set be recovered when the surviving side cannot form the configured majority? |
 
 ### Disaster recovery scope
 
