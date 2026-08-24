@@ -52,7 +52,7 @@ Members use region-readable hostnames through the lab's `/etc/hosts` alias layer
 
 After London restarted and caught up as a SECONDARY, MongoDB initiated a priorityTakeover and returned PRIMARY to the higher-priority London member.
 
-**Finding** : an eligible higher-priority member can trigger a priority takeover once it is sufficiently caught up and able to become PRIMARY.
+**Finding**: an eligible higher-priority member can trigger a priority takeover once it is sufficiently caught up and able to become PRIMARY.
 
 This observation is included as part of the measured failover-and-recovery sequence for the lab.
 
