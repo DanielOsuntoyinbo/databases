@@ -1,0 +1,65 @@
+]0;mongosh mongodb://<credentials>@localhost:27017/admin?replicaSet=rs0&serverSelectionTimeoutMS=2000{
+  _id: [32m'rs0'[39m,
+  version: [33m7[39m,
+  term: [33m4[39m,
+  members: [
+    {
+      _id: [33m0[39m,
+      host: [32m'psmdb-lab-stage2-rs0-0.psmdb-lab-stage2-rs0.psmdb.svc.cluster.local:27017'[39m,
+      arbiterOnly: [33mfalse[39m,
+      buildIndexes: [33mtrue[39m,
+      hidden: [33mfalse[39m,
+      priority: [33m2[39m,
+      tags: {
+        nodeName: [32m'ip-10-60-9-48.eu-west-1.compute.internal'[39m,
+        podName: [32m'psmdb-lab-stage2-rs0-0'[39m,
+        serviceName: [32m'psmdb-lab-stage2'[39m
+      },
+      secondaryDelaySecs: Long([32m'0'[39m),
+      votes: [33m1[39m
+    },
+    {
+      _id: [33m1[39m,
+      host: [32m'psmdb-lab-stage2-rs0-1.psmdb-lab-stage2-rs0.psmdb.svc.cluster.local:27017'[39m,
+      arbiterOnly: [33mfalse[39m,
+      buildIndexes: [33mtrue[39m,
+      hidden: [33mfalse[39m,
+      priority: [33m2[39m,
+      tags: {
+        nodeName: [32m'ip-10-60-28-236.eu-west-1.compute.internal'[39m,
+        podName: [32m'psmdb-lab-stage2-rs0-1'[39m,
+        serviceName: [32m'psmdb-lab-stage2'[39m
+      },
+      secondaryDelaySecs: Long([32m'0'[39m),
+      votes: [33m1[39m
+    },
+    {
+      _id: [33m2[39m,
+      host: [32m'psmdb-lab-stage2-rs0-2.psmdb-lab-stage2-rs0.psmdb.svc.cluster.local:27017'[39m,
+      arbiterOnly: [33mfalse[39m,
+      buildIndexes: [33mtrue[39m,
+      hidden: [33mfalse[39m,
+      priority: [33m2[39m,
+      tags: {
+        nodeName: [32m'ip-10-60-34-229.eu-west-1.compute.internal'[39m,
+        podName: [32m'psmdb-lab-stage2-rs0-2'[39m,
+        serviceName: [32m'psmdb-lab-stage2'[39m
+      },
+      secondaryDelaySecs: Long([32m'0'[39m),
+      votes: [33m1[39m
+    }
+  ],
+  protocolVersion: Long([32m'1'[39m),
+  writeConcernMajorityJournalDefault: [33mtrue[39m,
+  settings: {
+    chainingAllowed: [33mtrue[39m,
+    heartbeatIntervalMillis: [33m2000[39m,
+    heartbeatTimeoutSecs: [33m10[39m,
+    electionTimeoutMillis: [33m10000[39m,
+    catchUpTimeoutMillis: [33m-1[39m,
+    catchUpTakeoverDelayMillis: [33m30000[39m,
+    getLastErrorModes: {},
+    getLastErrorDefaults: { w: [33m1[39m, wtimeout: [33m0[39m },
+    replicaSetId: ObjectId([32m'6aaace73df79295baffed815'[39m)
+  }
+}

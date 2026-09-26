@@ -1,0 +1,8 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDBBackup
+metadata:
+  name: stage2-manual-backup-1
+  namespace: psmdb
+spec:
+  clusterName: psmdb-lab-stage2
+  storageName: s3-eu-west-1

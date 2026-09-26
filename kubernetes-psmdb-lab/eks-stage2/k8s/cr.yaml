@@ -1,0 +1,75 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: psmdb-lab-stage2
+  namespace: psmdb
+spec:
+  crVersion: 1.23.0          # match whatever operator version you install - check
+                              # the compatibility matrix in the operator's docs
+  image: percona/percona-server-mongodb:7.0.14-8   # verify this tag against the
+                              # compatibility matrix for crVersion 1.23.0 before applying
+
+  upgradeOptions:
+    apply: disabled           # don't let the operator auto-upgrade mongod in a lab
+                              # you're using to test failure behavior
+
+  secrets:
+    users: psmdb-lab-stage2-secrets
+
+  replsets:
+    - name: rs0
+      size: 3
+
+      serviceAccountName: psmdb-lab-stage2-backup
+
+      # this is the field that actually delivers AZ spread - the operator
+      # turns this into a pod anti-affinity rule under the hood. NOT the
+      # same as a raw topologySpreadConstraints block.
+      affinity:
+        antiAffinityTopologyKey: "topology.kubernetes.io/zone"
+
+      podDisruptionBudget:
+        maxUnavailable: 1
+
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+
+      volumeSpec:
+        persistentVolumeClaim:
+          storageClassName: psmdb-gp3
+          resources:
+            requests:
+              storage: 20Gi
+
+  sharding:
+    enabled: false            # plain replica set for stage 2, matches stage 1
+
+  backup:
+    enabled: true
+    image: percona/percona-backup-mongodb:2.5.0   # check against compatibility matrix
+    storages:
+      s3-eu-west-1:
+        type: s3
+        s3:
+          bucket: psmdb-lab-stage2-backups-eu-west-1
+          region: eu-west-1
+          # deliberately no credentialsSecret here - this assumes IRSA
+          # (see terraform/backup-irsa.tf). If you're not using IRSA yet,
+          # add credentialsSecret: psmdb-lab-stage2-backup-s3 instead and
+          # create that secret with static AWS keys.
+    tasks:
+      - name: daily-backup
+        enabled: true
+        schedule: "0 3 * * *"
+        storageName: s3-eu-west-1
+        compressionType: gzip
+
+  tls:
+    mode: preferTLS           # operator manages certs itself by default;
+                              # switch to a cert-manager Issuer reference
+                              # here if you want external cert rotation
