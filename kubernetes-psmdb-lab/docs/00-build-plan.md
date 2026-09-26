@@ -15,7 +15,7 @@ the manual `mongosh`-driven approach used in the EC2 lab.
 | Stage | Topology | Status |
 |---|---|---|
 | 1 | Local Kubernetes (Rancher Desktop), single node, plain 3-member replica set | ✅ Done |
-| 2 | Single AWS EKS cluster, multi-AZ | ⬜ Not started |
+| 2 | Single AWS EKS cluster, multi-AZ | ✅ Done |
 | 3 | Multiple EKS clusters across regions (true multi-region) | ⬜ Not started |
 
 Stage 1 is deliberately the cheapest, lowest-risk place to learn the
@@ -131,12 +131,85 @@ successfully without needing to resolve the TLS issue — used as the
 working method for this stage rather than debugging the SRV path
 further, since it wasn't blocking anything.
 
-## Next steps (Stage 2)
+## Stage 2 — AWS EKS (multi-AZ)
 
-- Provision an EKS cluster (single region, multi-AZ node groups).
-- Revert the anti-affinity workaround to a real topology key
-  (`topology.kubernetes.io/zone` for multi-AZ spread).
-- Re-run the baseline verification, then begin replaying EC2-lab-style
-  tests (primary failure, election timing) and compare operator
-  auto-recovery against the manual `systemctl kill` + `rs.status()`
-  approach from the EC2 lab.
+### Environment
+- EKS cluster provisioned via Terraform (not eksctl), eu-west-1, node
+  group spread across 3 AZs (m6i.large, one node per AZ)
+- `terraform-aws-modules` for VPC and EKS; EBS CSI driver via IRSA;
+  storage class `psmdb-gp3` with `WaitForFirstConsumer` binding mode
+- Percona Operator v1.23.0 (same version as stage 1), installed via Helm
+
+### Notable events / findings
+
+**1. `psmdb-lab-terraform` IAM user needed explicit grants beyond EC2.**
+S3, CloudWatch Logs, and IAM role/policy creation all returned
+`AccessDenied` on first apply. Required a root/admin-granted policy
+covering `iam:CreateRole`/`CreatePolicy`, `logs:CreateLogGroup`, and
+`s3:CreateBucket` before Terraform could proceed.
+
+**2. Cluster creator gets zero in-cluster RBAC by default.** The
+`terraform-aws-modules/eks` module's
+`bootstrap_cluster_creator_admin_permissions` defaults to `false`, so
+the identity running Terraform could authenticate to the API server
+but had no permissions inside it (`Unauthorized` on the Kubernetes
+provider's storage class resource). Fixed with an explicit
+`access_entries` block granting the Terraform identity
+`AmazonEKSClusterAdminPolicy` at cluster scope — additive, no cluster
+recreation needed.
+
+**3. IRSA for PBM backups initially bound to a guessed ServiceAccount
+name that didn't exist.** The mongod pods ran under the namespace's
+`default` SA, which had no IRSA annotation — PBM got `403 Forbidden`
+from S3. Fixed properly (not with a `default`-SA workaround) by
+creating a dedicated `psmdb-lab-stage2-backup` ServiceAccount via
+Terraform, referencing it explicitly via `serviceAccountName` in the
+CR's `replsets[]` block, and pointing the IAM trust policy at its
+actual name.
+
+**4. Single-node failure test surfaced a real capacity gap.**
+Cordoning/draining the primary's node caused a new primary election
+within `electionTimeoutMillis` (confirmed via `rs.status()`), but the
+rescheduled pod sat `Pending` — the node group had exactly 3 nodes for
+3 pods with no spare CPU, so there was nowhere for the pod to go.
+Required a manual `uncordon` to recover. This is a node-group sizing
+gap, not an operator or MongoDB problem — full auto-recovery testing
+needs Cluster Autoscaler (or standing headroom) in place first.
+
+### Verification
+- `rs.conf()` confirmed one member per AZ via node tags — see
+  `eks-stage2/evidence/baseline-rs-conf.txt` and
+  `baseline-rs-status.txt`
+- Backups confirmed reaching S3 via the dedicated IRSA-bound
+  ServiceAccount (no more `PBM Agent is not OK` in operator logs)
+- Primary-failure / election-timing comparison against the EC2 lab's
+  `systemctl kill` + `rs.status()` approach: **not yet complete** —
+  election itself worked, but the pod-scheduling gap above interrupted
+  clean auto-recovery, so the comparison wouldn't yet reflect a
+  properly self-healing setup
+
+### Cost note
+Left running ~1 week: ~$295 AWS cost (EKS control plane, 3x NAT
+gateways — both hourly and per-GB data processing — 3x on-demand EC2,
+CloudWatch ingestion from `audit`+`authenticator` log types). Infra
+fully torn down via `terraform destroy` afterward, confirmed via
+`describe-volumes`/`describe-nat-gateways`/`list-clusters` all
+returning empty. Future operator/deployment mechanics testing moved to
+a local multi-node `kind` cluster (nodes labeled with
+`topology.kubernetes.io/zone` to simulate AZ spread) to avoid further
+cloud cost; AWS reserved for short, bounded sessions validating
+cloud-specific behavior (IRSA, real zonal EBS failure).
+
+## Next steps (Stage 3)
+
+- Add Cluster Autoscaler (or Karpenter) so a pending pod with an
+  unsatisfiable zonal constraint triggers a new node in the correct AZ
+  automatically — needed before stage 2's failure test can be called
+  complete
+- Re-run the primary-failure / election-timing comparison against the
+  EC2 lab once the above is in place
+- Multiple EKS clusters across regions using the operator's Main/
+  Replica cross-site replication (`unmanaged: true` on non-Main
+  clusters), manual TLS/encryption-key secret propagation between
+  clusters, and either plain LoadBalancer/NLB exposure or Multi-Cluster
+  Services for cross-cluster reachability
